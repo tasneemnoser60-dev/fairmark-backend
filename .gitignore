@@ -6,3 +6,6 @@ services/**/.venv/
 npm-debug.log*
 .DS_Store
 Thumbs.db
+.ipynb_checkpoints/
+*.ipynb
+*.safetensors

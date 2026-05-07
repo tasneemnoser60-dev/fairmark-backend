@@ -19,6 +19,9 @@ const upload = multer({
 });
 const { ObjectId } = mongoose.Types;
 
+// Required behind Railway/Render proxies so rate limiting and client IP detection work correctly.
+app.set('trust proxy', 1);
+
 app.use(helmet());
 app.use(cors());
 app.use(express.json({ limit: '2mb' }));
@@ -36,6 +39,7 @@ app.use(
 const port = Number(process.env.PORT) || 4000;
 const mongoUri = process.env.MONGO_URI;
 const jwtSecret = process.env.JWT_SECRET || 'change-me';
+const vlmApiUrl = (process.env.VLM_API_URL || '').replace(/\/+$/, '');
 
 const okUser = (u) => ({
   id: String(u._id),
@@ -541,6 +545,110 @@ app.post(
       prediction: aiScore > 0.5 ? 'AI' : 'Human',
       aiScore: Number(aiScore.toFixed(2)),
     });
+  })
+);
+
+app.post(
+  '/vlm/process-exam',
+  auth,
+  allowRoles('doctor', 'admin'),
+  upload.any(),
+  asyncRoute(async (req, res) => {
+    if (!vlmApiUrl) {
+      return res.status(503).json({ message: 'VLM_API_URL is not configured' });
+    }
+    if (!req.files || req.files.length === 0) {
+      return res.status(400).json({ message: 'At least one image file is required' });
+    }
+
+    const form = new FormData();
+    for (const file of req.files) {
+      form.append('images', new Blob([file.buffer], { type: file.mimetype }), file.originalname);
+    }
+
+    const response = await fetch(`${vlmApiUrl}/process-exam`, {
+      method: 'POST',
+      body: form,
+    });
+
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      return res.status(response.status).json({
+        message: 'VLM process-exam failed',
+        details: payload,
+      });
+    }
+
+    return res.json(payload);
+  })
+);
+
+app.post(
+  '/vlm/process-answers',
+  auth,
+  allowRoles('student', 'doctor', 'admin'),
+  upload.any(),
+  asyncRoute(async (req, res) => {
+    if (!vlmApiUrl) {
+      return res.status(503).json({ message: 'VLM_API_URL is not configured' });
+    }
+    if (!req.files || req.files.length === 0) {
+      return res.status(400).json({ message: 'At least one image file is required' });
+    }
+    if (!req.body.questions) {
+      return res.status(400).json({ message: 'questions field is required (JSON string)' });
+    }
+
+    const form = new FormData();
+    for (const file of req.files) {
+      form.append('images', new Blob([file.buffer], { type: file.mimetype }), file.originalname);
+    }
+    form.append('questions', req.body.questions);
+
+    const response = await fetch(`${vlmApiUrl}/process-answers`, {
+      method: 'POST',
+      body: form,
+    });
+
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      return res.status(response.status).json({
+        message: 'VLM process-answers failed',
+        details: payload,
+      });
+    }
+
+    return res.json(payload);
+  })
+);
+
+app.post(
+  '/vlm/link',
+  auth,
+  allowRoles('doctor', 'admin'),
+  asyncRoute(async (req, res) => {
+    if (!vlmApiUrl) {
+      return res.status(503).json({ message: 'VLM_API_URL is not configured' });
+    }
+    if (!req.body || !req.body.exam || !req.body.answers) {
+      return res.status(400).json({ message: 'exam and answers are required in JSON body' });
+    }
+
+    const response = await fetch(`${vlmApiUrl}/link`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(req.body),
+    });
+
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      return res.status(response.status).json({
+        message: 'VLM link failed',
+        details: payload,
+      });
+    }
+
+    return res.json(payload);
   })
 );
 
