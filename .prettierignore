@@ -1,0 +1,5 @@
+node_modules
+.venv
+services/**/.venv
+package-lock.json
+services/AI_detection/fairmark_ai_detector/**
