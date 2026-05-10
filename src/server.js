@@ -228,7 +228,10 @@ app.post('/api/auth/login', loginHandler);
 app.post('/auth/login', loginHandler);
 
 const createAssignmentHandler = asyncRoute(async (req, res) => {
-    const { value, error } = assignmentSchema.validate(req.body);
+    const { value, error } = assignmentSchema.validate(req.body, {
+      allowUnknown: true,
+      stripUnknown: true,
+    });
     if (error) return res.status(400).json({ message: error.message });
 
     const db = getDbOrFail();
