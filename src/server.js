@@ -20,7 +20,18 @@ const upload = multer({
 const { ObjectId } = mongoose.Types;
 
 // Required behind Railway/Render proxies so rate limiting and client IP detection work correctly.
-app.set('trust proxy', 1);
+const trustProxyEnv = process.env.TRUST_PROXY;
+const trustProxy =
+  trustProxyEnv === undefined
+    ? 1
+    : trustProxyEnv === 'true'
+      ? true
+      : trustProxyEnv === 'false'
+        ? false
+        : Number.isNaN(Number(trustProxyEnv))
+          ? trustProxyEnv
+          : Number(trustProxyEnv);
+app.set('trust proxy', trustProxy);
 
 app.use(helmet());
 app.use(cors());
@@ -38,7 +49,9 @@ app.use(
 
 const port = Number(process.env.PORT) || 4000;
 const mongoUri = process.env.MONGO_URI;
-const jwtSecret = process.env.JWT_SECRET || 'change-me';
+const jwtSecret = process.env.JWT_SECRET;
+const aiDetectionUrl = (process.env.AI_DETECTION_URL || '').trim();
+const allowAiFallback = String(process.env.ALLOW_AI_FALLBACK || 'true').toLowerCase() !== 'false';
 const vlmApiUrl = (process.env.VLM_API_URL || '').replace(/\/+$/, '');
 
 const okUser = (u) => ({
@@ -79,6 +92,13 @@ const userIdAlternatives = (userId) => {
   const asObjectId = parseObjectId(userId);
   if (asObjectId) alt.push(asObjectId);
   return alt;
+};
+
+const ensureDoctorAssignmentAccess = (assignment, user) => {
+  if (!assignment) return { ok: false, status: 404, message: 'Assignment not found' };
+  if (user.role === 'admin') return { ok: true };
+  if (user.role === 'doctor' && isSameId(assignment.doctorId, user.id)) return { ok: true };
+  return { ok: false, status: 403, message: 'Forbidden' };
 };
 
 const auth = async (req, res, next) => {
@@ -133,6 +153,7 @@ const loginSchema = Joi.object({
 const assignmentSchema = Joi.object({
   title: Joi.string().min(2).max(200).required(),
   description: Joi.string().allow('').default(''),
+  assignmentText: Joi.string().allow('').default(''),
   totalMark: Joi.number().min(0).required(),
   dueDate: Joi.date().required(),
 });
@@ -204,6 +225,7 @@ app.post(
   '/assignments',
   auth,
   allowRoles('doctor', 'admin'),
+  upload.any(),
   asyncRoute(async (req, res) => {
     const { value, error } = assignmentSchema.validate(req.body);
     if (error) return res.status(400).json({ message: error.message });
@@ -211,11 +233,25 @@ app.post(
     const db = getDbOrFail();
     const now = new Date();
     const doctorObjectId = parseObjectId(req.user.id);
+    const uploaded = (req.files || []).find((f) => ['file', 'image', 'images'].includes(f.fieldname));
+    const assignmentTextRaw = String(
+      req.body.assignmentText ?? req.body.assignment ?? req.body.text ?? ''
+    ).trim();
+    const assignmentText = assignmentTextRaw || value.assignmentText || '';
     const doc = {
       ...value,
       dueDate: new Date(value.dueDate),
       doctorId: doctorObjectId || req.user.id,
       doctorEmail: req.user.email,
+      assignmentText,
+      modelAnswer: uploaded
+        ? {
+            originalName: uploaded.originalname,
+            mimeType: uploaded.mimetype,
+            size: uploaded.size,
+            uploadedAt: now,
+          }
+        : null,
       createdAt: now,
       updatedAt: now,
     };
@@ -312,23 +348,30 @@ app.post(
   '/assignments/:id/model-answer',
   auth,
   allowRoles('doctor', 'admin'),
-  upload.single('file'),
+  upload.any(),
   asyncRoute(async (req, res) => {
     const db = getDbOrFail();
     const _id = parseObjectId(req.params.id);
     if (!_id) return res.status(400).json({ message: 'Invalid assignment id' });
     const current = await db.collection('assignments').findOne({ _id });
     if (!current) return res.status(404).json({ message: 'Assignment not found' });
-    if (!req.file) return res.status(400).json({ message: 'file is required' });
+    const access = ensureDoctorAssignmentAccess(current, req.user);
+    if (!access.ok) return res.status(access.status).json({ message: access.message });
+    const uploaded = (req.files || []).find((f) => ['file', 'image', 'images'].includes(f.fieldname));
+    if (!uploaded) {
+      return res.status(400).json({
+        message: "Missing upload. Provide model answer file in form-data field 'file' (also accepted: 'image' or 'images').",
+      });
+    }
 
     await db.collection('assignments').updateOne(
       { _id },
       {
         $set: {
           modelAnswer: {
-            originalName: req.file.originalname,
-            mimeType: req.file.mimetype,
-            size: req.file.size,
+            originalName: uploaded.originalname,
+            mimeType: uploaded.mimetype,
+            size: uploaded.size,
             uploadedAt: new Date(),
           },
           updatedAt: new Date(),
@@ -336,7 +379,7 @@ app.post(
       }
     );
 
-    return res.json({ ok: true, file: req.file.originalname });
+    return res.json({ ok: true, file: uploaded.originalname });
   })
 );
 
@@ -348,6 +391,9 @@ app.get(
     const db = getDbOrFail();
     const assignmentId = parseObjectId(req.params.id);
     if (!assignmentId) return res.status(400).json({ message: 'Invalid assignment id' });
+    const assignment = await db.collection('assignments').findOne({ _id: assignmentId });
+    const access = ensureDoctorAssignmentAccess(assignment, req.user);
+    if (!access.ok) return res.status(access.status).json({ message: access.message });
     const docs = await db
       .collection('submissions')
       .find({ assignmentId: { $in: [assignmentId, String(assignmentId)] } })
@@ -361,16 +407,21 @@ app.post(
   '/submissions',
   auth,
   allowRoles('student'),
-  upload.single('file'),
+  upload.any(),
   asyncRoute(async (req, res) => {
     const db = getDbOrFail();
     const assignmentId = parseObjectId(req.body.assignmentId);
-    if (!assignmentId) return res.status(400).json({ message: 'Invalid assignmentId' });
+    if (!assignmentId) {
+      return res.status(400).json({
+        message: "Invalid or missing 'assignmentId'. Send a valid Mongo ObjectId in form-data.",
+      });
+    }
     const assignment = await db.collection('assignments').findOne({ _id: assignmentId });
     if (!assignment) return res.status(404).json({ message: 'Assignment not found' });
 
     const now = new Date();
     const studentObjectId = parseObjectId(req.user.id);
+    const uploaded = (req.files || []).find((f) => ['file', 'image', 'images'].includes(f.fieldname));
     const doc = {
       assignmentId,
       assignmentTitle: assignment.title,
@@ -379,11 +430,11 @@ app.post(
       answerText: req.body.answerText || '',
       status: 'submitted',
       score: null,
-      file: req.file
+      file: uploaded
         ? {
-            originalName: req.file.originalname,
-            mimeType: req.file.mimetype,
-            size: req.file.size,
+            originalName: uploaded.originalname,
+            mimeType: uploaded.mimetype,
+            size: uploaded.size,
           }
         : null,
       createdAt: now,
@@ -434,13 +485,25 @@ app.put(
     if (!_id) return res.status(400).json({ message: 'Invalid submission id' });
     const score = Number(req.body.score);
     if (Number.isNaN(score)) return res.status(400).json({ message: 'score is required' });
-    const result = await db
-      .collection('submissions')
-      .findOneAndUpdate(
-        { _id },
-        { $set: { score, status: 'graded', updatedAt: new Date() } },
-        { returnDocument: 'after' }
-      );
+    const existing = await db.collection('submissions').findOne({ _id });
+    if (!existing) return res.status(404).json({ message: 'Submission not found' });
+
+    if (req.user.role === 'doctor') {
+      const assignmentObjId =
+        existing.assignmentId instanceof ObjectId
+          ? existing.assignmentId
+          : parseObjectId(existing.assignmentId);
+      if (!assignmentObjId) return res.status(400).json({ message: 'Invalid assignment id on submission' });
+      const assignment = await db.collection('assignments').findOne({ _id: assignmentObjId });
+      const access = ensureDoctorAssignmentAccess(assignment, req.user);
+      if (!access.ok) return res.status(access.status).json({ message: access.message });
+    }
+
+    const result = await db.collection('submissions').findOneAndUpdate(
+      { _id },
+      { $set: { score, status: 'graded', updatedAt: new Date() } },
+      { returnDocument: 'after' }
+    );
     const updated = unwrapFindOneAndUpdateResult(result);
     if (!updated) return res.status(404).json({ message: 'Submission not found' });
     return res.json(updated);
@@ -470,6 +533,9 @@ app.get(
     const db = getDbOrFail();
     const assignmentId = parseObjectId(req.params.assignmentId);
     if (!assignmentId) return res.status(400).json({ message: 'Invalid assignment id' });
+    const assignment = await db.collection('assignments').findOne({ _id: assignmentId });
+    const access = ensureDoctorAssignmentAccess(assignment, req.user);
+    if (!access.ok) return res.status(access.status).json({ message: access.message });
     const docs = await db
       .collection('submissions')
       .find({ assignmentId: { $in: [assignmentId, String(assignmentId)] } })
@@ -538,12 +604,57 @@ app.post(
   asyncRoute(async (req, res) => {
     const text = String(req.body.text || '');
     if (!text.trim()) return res.status(400).json({ message: 'text is required' });
-    const aiScore = Math.min(0.95, Math.max(0.05, text.length / 500));
-    return res.json({
+
+    const localScore = Math.min(0.95, Math.max(0.05, text.length / 500));
+    const localPrediction = localScore > 0.5 ? 'AI' : 'Human';
+
+    const localFallbackResponse = (reason) => ({
       ok: true,
-      source: process.env.AI_DETECTION_URL || 'local-mock',
-      prediction: aiScore > 0.5 ? 'AI' : 'Human',
-      aiScore: Number(aiScore.toFixed(2)),
+      degraded: true,
+      reason,
+      source: 'local-fallback',
+      prediction: localPrediction,
+      aiScore: Number(localScore.toFixed(2)),
+    });
+
+    if (aiDetectionUrl) {
+      try {
+        const response = await fetch(aiDetectionUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text }),
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          if (allowAiFallback) {
+            return res.json(localFallbackResponse('upstream_non_200'));
+          }
+          return res.status(response.status).json({
+            message: 'AI detection failed',
+            details: payload,
+          });
+        }
+        return res.json({
+          ok: true,
+          source: aiDetectionUrl,
+          ...payload,
+        });
+      } catch (err) {
+        if (allowAiFallback) {
+          return res.json(localFallbackResponse('upstream_unreachable'));
+        }
+        return res.status(502).json({
+          message: 'AI detection service unavailable',
+          details: err.message,
+          source: aiDetectionUrl,
+        });
+      }
+    }
+
+    return res.json({
+      ...localFallbackResponse('upstream_not_configured'),
+      degraded: false,
+      source: 'local-mock',
     });
   })
 );
@@ -557,19 +668,30 @@ app.post(
     if (!vlmApiUrl) {
       return res.status(503).json({ message: 'VLM_API_URL is not configured' });
     }
-    if (!req.files || req.files.length === 0) {
-      return res.status(400).json({ message: 'At least one image file is required' });
+    const files = (req.files || []).filter((f) => ['images', 'image', 'file'].includes(f.fieldname));
+    if (files.length === 0) {
+      return res.status(400).json({
+        message: "Missing images. Send multipart/form-data with at least one file in field 'images' (also accepted: 'image' or 'file').",
+      });
     }
 
     const form = new FormData();
-    for (const file of req.files) {
+    for (const file of files) {
       form.append('images', new Blob([file.buffer], { type: file.mimetype }), file.originalname);
     }
 
-    const response = await fetch(`${vlmApiUrl}/process-exam`, {
-      method: 'POST',
-      body: form,
-    });
+    let response;
+    try {
+      response = await fetch(`${vlmApiUrl}/process-exam`, {
+        method: 'POST',
+        body: form,
+      });
+    } catch (err) {
+      return res.status(502).json({
+        message: 'VLM process-exam service unavailable',
+        details: err.message,
+      });
+    }
 
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) {
@@ -592,23 +714,36 @@ app.post(
     if (!vlmApiUrl) {
       return res.status(503).json({ message: 'VLM_API_URL is not configured' });
     }
-    if (!req.files || req.files.length === 0) {
-      return res.status(400).json({ message: 'At least one image file is required' });
+    const files = (req.files || []).filter((f) => ['images', 'image', 'file'].includes(f.fieldname));
+    if (files.length === 0) {
+      return res.status(400).json({
+        message: "Missing images. Send multipart/form-data with at least one file in field 'images' (also accepted: 'image' or 'file').",
+      });
     }
     if (!req.body.questions) {
-      return res.status(400).json({ message: 'questions field is required (JSON string)' });
+      return res.status(400).json({
+        message: "Missing 'questions'. Provide it as a JSON string in form-data (e.g. [{\"id\":1,\"text\":\"...\",\"type\":\"mcq\"}]).",
+      });
     }
 
     const form = new FormData();
-    for (const file of req.files) {
+    for (const file of files) {
       form.append('images', new Blob([file.buffer], { type: file.mimetype }), file.originalname);
     }
     form.append('questions', req.body.questions);
 
-    const response = await fetch(`${vlmApiUrl}/process-answers`, {
-      method: 'POST',
-      body: form,
-    });
+    let response;
+    try {
+      response = await fetch(`${vlmApiUrl}/process-answers`, {
+        method: 'POST',
+        body: form,
+      });
+    } catch (err) {
+      return res.status(502).json({
+        message: 'VLM process-answers service unavailable',
+        details: err.message,
+      });
+    }
 
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) {
@@ -634,11 +769,19 @@ app.post(
       return res.status(400).json({ message: 'exam and answers are required in JSON body' });
     }
 
-    const response = await fetch(`${vlmApiUrl}/link`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(req.body),
-    });
+    let response;
+    try {
+      response = await fetch(`${vlmApiUrl}/link`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(req.body),
+      });
+    } catch (err) {
+      return res.status(502).json({
+        message: 'VLM link service unavailable',
+        details: err.message,
+      });
+    }
 
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) {
@@ -666,6 +809,10 @@ app.use((err, _req, res, _next) => {
 });
 
 const start = async () => {
+  if (!jwtSecret) {
+    throw new Error('JWT_SECRET is required');
+  }
+
   if (mongoUri) {
     try {
       await mongoose.connect(mongoUri);

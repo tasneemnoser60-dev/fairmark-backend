@@ -3,7 +3,6 @@ const fs = require('fs');
 const path = require('path');
 const mongoose = require('mongoose');
 const bcrypt = require('bcrypt');
-const User = require('../src/modules/users/user.model');
 
 const csvPath = process.argv[2] || path.join(__dirname, '..', 'users_seed.csv');
 
@@ -34,12 +33,13 @@ const parseCsv = (text) => {
   }
 
   await mongoose.connect(process.env.MONGO_URI);
+  const usersCollection = mongoose.connection.db.collection('users');
 
   let upserted = 0;
   for (const u of users) {
     const email = u.email.toLowerCase();
     const passwordHash = await bcrypt.hash(u.password, 10);
-    const res = await User.updateOne(
+    const res = await usersCollection.updateOne(
       { email },
       {
         $set: {

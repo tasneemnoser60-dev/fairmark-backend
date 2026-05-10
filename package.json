@@ -7,6 +7,7 @@
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
     "lint": "eslint .",
+    "smoke": "powershell -ExecutionPolicy Bypass -File scripts/smoke-test.ps1",
     "lint:fix": "eslint . --fix",
     "format": "prettier . --write",
     "format:check": "prettier . --check"

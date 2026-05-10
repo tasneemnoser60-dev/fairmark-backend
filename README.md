@@ -69,6 +69,10 @@ Authorization: Bearer <jwt_token>
 - `POST /assignments/:id/model-answer` (upload file)
 - `GET /assignments/:id/submissions` (doctor only)
 
+`POST /assignments` supports both:
+- `application/json` (text fields only)
+- `multipart/form-data` (text fields + optional file in `file` / `image` / `images`)
+
 ### Submissions (student only for create + my)
 
 - `POST /submissions`
@@ -131,11 +135,23 @@ curl -X POST http://localhost:4000/api/auth/login \
 Replace `<TOKEN>` with the JWT returned from login/register.
 
 ```bash
-# Create assignment (doctor)
+# Create assignment (doctor) - JSON
 curl -X POST http://localhost:4000/assignments \
   -H "Authorization: Bearer <TOKEN>" \
   -H "Content-Type: application/json" \
-  -d '{"title":"Quiz 1","description":"Intro quiz","totalMark":10,"dueDate":"2026-03-01T12:00:00.000Z"}'
+  -d '{"title":"Quiz 1","description":"Intro quiz","assignmentText":"Solve all questions","totalMark":10,"dueDate":"2026-03-01T12:00:00.000Z"}'
+```
+
+```bash
+# Create assignment (doctor) - multipart (with file)
+curl -X POST http://localhost:4000/assignments \
+  -H "Authorization: Bearer <TOKEN>" \
+  -F "title=Quiz 1" \
+  -F "description=Intro quiz" \
+  -F "assignmentText=Solve all questions in the attached paper" \
+  -F "totalMark=10" \
+  -F "dueDate=2026-03-01T12:00:00.000Z" \
+  -F "file=@C:\\path\\to\\assignment-paper.pdf"
 ```
 
 ```bash

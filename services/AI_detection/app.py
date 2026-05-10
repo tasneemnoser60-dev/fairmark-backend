@@ -36,8 +36,10 @@ def predict_ai_percentage(text):
 
 @app.route("/predict", methods=["POST"])
 def predict():
-    data = request.json
+    data = request.get_json(silent=True) or {}
     text = data.get("text", "")
+    if not isinstance(text, str) or not text.strip():
+        return jsonify({"error": "text is required"}), 400
 
     human, ai = predict_ai_percentage(text)
 
