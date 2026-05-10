@@ -94,6 +94,12 @@ const userIdAlternatives = (userId) => {
   return alt;
 };
 
+const pickUploadedFile = (files = []) => {
+  if (!Array.isArray(files) || files.length === 0) return null;
+  const preferred = files.find((f) => /^(file|image|images)(\[\])?(\d+)?$/i.test(f.fieldname));
+  return preferred || files[0] || null;
+};
+
 const ensureDoctorAssignmentAccess = (assignment, user) => {
   if (!assignment) return { ok: false, status: 404, message: 'Assignment not found' };
   if (user.role === 'admin') return { ok: true };
@@ -233,7 +239,7 @@ app.post(
     const db = getDbOrFail();
     const now = new Date();
     const doctorObjectId = parseObjectId(req.user.id);
-    const uploaded = (req.files || []).find((f) => ['file', 'image', 'images'].includes(f.fieldname));
+    const uploaded = pickUploadedFile(req.files);
     const assignmentTextRaw = String(
       req.body.assignmentText ?? req.body.assignment ?? req.body.text ?? ''
     ).trim();
@@ -357,7 +363,7 @@ app.post(
     if (!current) return res.status(404).json({ message: 'Assignment not found' });
     const access = ensureDoctorAssignmentAccess(current, req.user);
     if (!access.ok) return res.status(access.status).json({ message: access.message });
-    const uploaded = (req.files || []).find((f) => ['file', 'image', 'images'].includes(f.fieldname));
+    const uploaded = pickUploadedFile(req.files);
     if (!uploaded) {
       return res.status(400).json({
         message: "Missing upload. Provide model answer file in form-data field 'file' (also accepted: 'image' or 'images').",
@@ -668,7 +674,9 @@ app.post(
     if (!vlmApiUrl) {
       return res.status(503).json({ message: 'VLM_API_URL is not configured' });
     }
-    const files = (req.files || []).filter((f) => ['images', 'image', 'file'].includes(f.fieldname));
+    const files = (req.files || []).filter(
+      (f) => /^(file|image|images)(\[\])?(\d+)?$/i.test(f.fieldname)
+    );
     if (files.length === 0) {
       return res.status(400).json({
         message: "Missing images. Send multipart/form-data with at least one file in field 'images' (also accepted: 'image' or 'file').",
@@ -714,7 +722,9 @@ app.post(
     if (!vlmApiUrl) {
       return res.status(503).json({ message: 'VLM_API_URL is not configured' });
     }
-    const files = (req.files || []).filter((f) => ['images', 'image', 'file'].includes(f.fieldname));
+    const files = (req.files || []).filter(
+      (f) => /^(file|image|images)(\[\])?(\d+)?$/i.test(f.fieldname)
+    );
     if (files.length === 0) {
       return res.status(400).json({
         message: "Missing images. Send multipart/form-data with at least one file in field 'images' (also accepted: 'image' or 'file').",
