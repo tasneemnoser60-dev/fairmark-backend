@@ -30,9 +30,9 @@
             "type": "text/javascript",
             "exec": [
               "const ts = Date.now();",
-              "pm.collectionVariables.set('studentEmail', `student.${ts}@example.com`);",
-              "pm.collectionVariables.set('doctorEmail', `doctor.${ts}@example.com`);",
-              "pm.collectionVariables.set('adminEmail', `admin.${ts}@example.com`);"
+              "pm.collectionVariables.set('studentEmail', `student.${ts}@fairmark.test`);",
+              "pm.collectionVariables.set('doctorEmail', `doctor.${ts}@fairmark.test`);",
+              "pm.collectionVariables.set('adminEmail', `admin.${ts}@fairmark.test`);"
             ]
           }
         },

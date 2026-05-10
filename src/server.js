@@ -227,12 +227,7 @@ app.post('/auth/register', registerHandler);
 app.post('/api/auth/login', loginHandler);
 app.post('/auth/login', loginHandler);
 
-app.post(
-  '/assignments',
-  auth,
-  allowRoles('doctor', 'admin'),
-  upload.any(),
-  asyncRoute(async (req, res) => {
+const createAssignmentHandler = asyncRoute(async (req, res) => {
     const { value, error } = assignmentSchema.validate(req.body);
     if (error) return res.status(400).json({ message: error.message });
 
@@ -264,7 +259,15 @@ app.post(
     const result = await db.collection('assignments').insertOne(doc);
     doc._id = result.insertedId;
     return res.status(201).json(doc);
-  })
+  });
+
+app.post('/assignments', auth, allowRoles('doctor', 'admin'), upload.any(), createAssignmentHandler);
+app.post(
+  '/api/assignments',
+  auth,
+  allowRoles('doctor', 'admin'),
+  upload.any(),
+  createAssignmentHandler
 );
 
 app.get(
@@ -350,12 +353,7 @@ app.delete(
   })
 );
 
-app.post(
-  '/assignments/:id/model-answer',
-  auth,
-  allowRoles('doctor', 'admin'),
-  upload.any(),
-  asyncRoute(async (req, res) => {
+const uploadModelAnswerHandler = asyncRoute(async (req, res) => {
     const db = getDbOrFail();
     const _id = parseObjectId(req.params.id);
     if (!_id) return res.status(400).json({ message: 'Invalid assignment id' });
@@ -386,7 +384,21 @@ app.post(
     );
 
     return res.json({ ok: true, file: uploaded.originalname });
-  })
+  });
+
+app.post(
+  '/assignments/:id/model-answer',
+  auth,
+  allowRoles('doctor', 'admin'),
+  upload.any(),
+  uploadModelAnswerHandler
+);
+app.post(
+  '/api/assignments/:id/model-answer',
+  auth,
+  allowRoles('doctor', 'admin'),
+  upload.any(),
+  uploadModelAnswerHandler
 );
 
 app.get(
