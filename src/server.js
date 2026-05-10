@@ -640,6 +640,29 @@ app.get(
     });
   })
 );
+app.get('/api/student/dashboard', auth, allowRoles('student'), asyncRoute(async (req, res) => {
+  const db = getDbOrFail();
+  const now = new Date();
+  const assignments = await db.collection('assignments').find({}).sort({ dueDate: 1 }).toArray();
+  const submissions = await db
+    .collection('submissions')
+    .find({ studentId: { $in: userIdAlternatives(req.user.id) } })
+    .toArray();
+  const byAssignment = new Map(submissions.map((s) => [idToString(s.assignmentId), s]));
+  const pendingAssignments = assignments.filter((a) => !byAssignment.has(idToString(a._id))).length;
+  const upcomingExams = assignments.filter((a) => new Date(a.dueDate) > now).length;
+  const tasks = assignments.slice(0, 10).map((a) => {
+    const sub = byAssignment.get(idToString(a._id));
+    return {
+      assignmentId: idToString(a._id),
+      title: a.title || 'Untitled assignment',
+      dueDate: a.dueDate,
+      status: mapStudentAssignmentStatus(sub),
+      action: sub ? 'view_submission' : 'submit_answer',
+    };
+  });
+  return res.json({ summary: { pendingAssignments, upcomingExams }, tasks });
+}));
 
 app.get(
   '/student/assignments',
@@ -670,6 +693,28 @@ app.get(
     return res.json({ items });
   })
 );
+app.get('/api/student/assignments', auth, allowRoles('student'), asyncRoute(async (req, res) => {
+  const db = getDbOrFail();
+  const assignments = await db.collection('assignments').find({}).sort({ createdAt: -1 }).toArray();
+  const submissions = await db
+    .collection('submissions')
+    .find({ studentId: { $in: userIdAlternatives(req.user.id) } })
+    .toArray();
+  const byAssignment = new Map(submissions.map((s) => [idToString(s.assignmentId), s]));
+  const items = assignments.map((a) => {
+    const sub = byAssignment.get(idToString(a._id));
+    const status = mapStudentAssignmentStatus(sub);
+    return {
+      assignmentId: idToString(a._id),
+      title: a.title || 'Untitled assignment',
+      dueDate: a.dueDate,
+      totalMark: a.totalMark ?? null,
+      status,
+      action: status === 'not_submitted' ? 'submit_answer' : 'view_submission',
+    };
+  });
+  return res.json({ items });
+}));
 
 app.get(
   '/student/exams',

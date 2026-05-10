@@ -286,6 +286,11 @@
                                                                        "key":  "answerText",
                                                                        "value":  "This is my answer",
                                                                        "type":  "text"
+                                                                   },
+                                                                   {
+                                                                       "key":  "file",
+                                                                       "type":  "file",
+                                                                       "src":  ""
                                                                    }
                                                                ]
                                               },
