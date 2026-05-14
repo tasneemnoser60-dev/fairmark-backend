@@ -94,6 +94,18 @@ const userIdAlternatives = (userId) => {
   return alt;
 };
 
+const normalizeEmail = (email) => String(email || '').trim().toLowerCase();
+
+const doctorOwnershipFilter = (user) => {
+  if (!user || user.role === 'admin') return {};
+  const doctorEmail = normalizeEmail(user.email);
+  const byDoctorId = { doctorId: { $in: userIdAlternatives(user.id) } };
+  if (!doctorEmail) return byDoctorId;
+  return {
+    $or: [byDoctorId, { doctorEmail }],
+  };
+};
+
 const pickUploadedFile = (files = []) => {
   if (!Array.isArray(files) || files.length === 0) return null;
   const preferred = files.find((f) => /^(file|image|images)(\[\])?(\d+)?$/i.test(f.fieldname));
@@ -103,7 +115,13 @@ const pickUploadedFile = (files = []) => {
 const ensureDoctorAssignmentAccess = (assignment, user) => {
   if (!assignment) return { ok: false, status: 404, message: 'Assignment not found' };
   if (user.role === 'admin') return { ok: true };
-  if (user.role === 'doctor' && isSameId(assignment.doctorId, user.id)) return { ok: true };
+  if (user.role === 'doctor') {
+    const isOwnerById = isSameId(assignment.doctorId, user.id);
+    const isOwnerByEmail =
+      normalizeEmail(assignment.doctorEmail) &&
+      normalizeEmail(assignment.doctorEmail) === normalizeEmail(user.email);
+    if (isOwnerById || isOwnerByEmail) return { ok: true };
+  }
   return { ok: false, status: 403, message: 'Forbidden' };
 };
 
@@ -304,7 +322,7 @@ app.get(
       req.user.role === 'admin'
         ? {}
         : req.user.role === 'doctor'
-          ? { doctorId: { $in: userIdAlternatives(req.user.id) } }
+          ? doctorOwnershipFilter(req.user)
           : {};
     const docs = await db.collection('assignments').find(query).sort({ createdAt: -1 }).toArray();
     return res.json(docs);
@@ -320,9 +338,7 @@ app.get(
     const query =
       req.user.role === 'admin'
         ? {}
-        : {
-            doctorId: { $in: userIdAlternatives(req.user.id) },
-          };
+        : doctorOwnershipFilter(req.user);
     const docs = await db.collection('assignments').find(query).sort({ createdAt: -1 }).toArray();
     return res.json(docs);
   })
@@ -513,7 +529,7 @@ app.get(
     if (req.user.role === 'doctor') {
       const assignments = await db
         .collection('assignments')
-        .find({ doctorId: { $in: userIdAlternatives(req.user.id) } }, { projection: { _id: 1 } })
+        .find(doctorOwnershipFilter(req.user), { projection: { _id: 1 } })
         .toArray();
       const assignmentIds = assignments.flatMap((a) => [a._id, String(a._id)]);
       const docs = assignmentIds.length
@@ -627,7 +643,7 @@ app.get(
   asyncRoute(async (req, res) => {
     const db = getDbOrFail();
     const assignmentsQuery =
-      req.user.role === 'admin' ? {} : { doctorId: { $in: userIdAlternatives(req.user.id) } };
+      req.user.role === 'admin' ? {} : doctorOwnershipFilter(req.user);
     const assignmentDocs = await db.collection('assignments').find(assignmentsQuery).toArray();
     const assignmentIds = assignmentDocs.flatMap((a) => [a._id, String(a._id)]);
     const submissionDocs = assignmentIds.length
@@ -1017,7 +1033,7 @@ app.get(
   asyncRoute(async (req, res) => {
     const db = getDbOrFail();
     const assignmentsQuery =
-      req.user.role === 'admin' ? {} : { doctorId: { $in: userIdAlternatives(req.user.id) } };
+      req.user.role === 'admin' ? {} : doctorOwnershipFilter(req.user);
     const assignments = await db.collection('assignments').find(assignmentsQuery).sort({ dueDate: 1 }).toArray();
 
     const assignmentIds = assignments.flatMap((a) => [a._id, String(a._id)]);
@@ -1067,7 +1083,7 @@ app.get(
   asyncRoute(async (req, res) => {
     const db = getDbOrFail();
     const assignmentsQuery =
-      req.user.role === 'admin' ? {} : { doctorId: { $in: userIdAlternatives(req.user.id) } };
+      req.user.role === 'admin' ? {} : doctorOwnershipFilter(req.user);
     const assignments = await db.collection('assignments').find(assignmentsQuery).sort({ createdAt: -1 }).toArray();
 
     const assignmentIds = assignments.flatMap((a) => [a._id, String(a._id)]);
@@ -1242,7 +1258,7 @@ app.get(
   asyncRoute(async (req, res) => {
     const db = getDbOrFail();
     const assignmentsQuery =
-      req.user.role === 'admin' ? {} : { doctorId: { $in: userIdAlternatives(req.user.id) } };
+      req.user.role === 'admin' ? {} : doctorOwnershipFilter(req.user);
     const assignments = await db.collection('assignments').find(assignmentsQuery).sort({ createdAt: -1 }).toArray();
     const assignmentIds = assignments.flatMap((a) => [a._id, String(a._id)]);
     const submissions = assignmentIds.length
@@ -1404,7 +1420,7 @@ app.get(
     const user = userId ? await db.collection('users').findOne({ _id: userId }) : null;
 
     const assignmentsQuery =
-      req.user.role === 'admin' ? {} : { doctorId: { $in: userIdAlternatives(req.user.id) } };
+      req.user.role === 'admin' ? {} : doctorOwnershipFilter(req.user);
     const assignments = await db.collection('assignments').find(assignmentsQuery).toArray();
     const assignmentIds = assignments.flatMap((a) => [a._id, String(a._id)]);
     const submissions = assignmentIds.length
