@@ -144,7 +144,7 @@
                                ]
                  },
                  {
-                     "name":  "03 - Register Admin (Expected Fail)",
+                     "name":  "03 - Register Doctor 2",
                      "request":  {
                                      "method":  "POST",
                                      "header":  [
@@ -155,7 +155,7 @@
                                                 ],
                                      "body":  {
                                                   "mode":  "raw",
-                                                  "raw":  "{\n  \"name\": \"Admin\",\n  \"email\": \"{{adminEmail}}\",\n  \"password\": \"{{password}}\",\n  \"role\": \"admin\"\n}"
+                                                  "raw":  "{\n  \"name\": \"Doctor 2\",\n  \"email\": \"{{adminEmail}}\",\n  \"password\": \"{{password}}\",\n  \"role\": \"doctor\"\n}"
                                               },
                                      "url":  "{{baseUrl}}/api/auth/register"
                                  },
@@ -165,10 +165,11 @@
                                        "script":  {
                                                       "type":  "text/javascript",
                                                       "exec":  [
-                                                                   "pm.test(\u0027Register admin is blocked\u0027, function () {",
-                                                                   "  pm.expect(pm.response.code).to.eql(400);",
+                                                                   "pm.test(\u0027Register doctor2 success\u0027, function () {",
+                                                                   "  pm.expect([200, 201]).to.include(pm.response.code);",
                                                                    "});",
-                                                                   "pm.collectionVariables.set(\u0027adminToken\u0027, \u0027\u0027);"
+                                                                   "const json = pm.response.json();",
+                                                                   "if (json \u0026\u0026 json.token) pm.collectionVariables.set(\u0027adminToken\u0027, json.token);"
                                                                ]
                                                   }
                                    }

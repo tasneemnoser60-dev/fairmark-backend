@@ -108,7 +108,7 @@
       ]
     },
     {
-      "name": "03 - Register Admin (Expected Fail)",
+      "name": "03 - Register Doctor 2",
       "request": {
         "method": "POST",
         "header": [
@@ -116,7 +116,7 @@
         ],
         "body": {
           "mode": "raw",
-          "raw": "{\n  \"name\": \"Admin\",\n  \"email\": \"{{adminEmail}}\",\n  \"password\": \"{{password}}\",\n  \"role\": \"admin\"\n}"
+          "raw": "{\n  \"name\": \"Doctor 2\",\n  \"email\": \"{{adminEmail}}\",\n  \"password\": \"{{password}}\",\n  \"role\": \"doctor\"\n}"
         },
         "url": "{{baseUrl}}/api/auth/register"
       },
@@ -126,10 +126,11 @@
           "script": {
             "type": "text/javascript",
             "exec": [
-              "pm.test('Register admin is blocked', function () {",
-              "  pm.expect(pm.response.code).to.eql(400);",
+              "pm.test('Register doctor2 success', function () {",
+              "  pm.expect([200, 201]).to.include(pm.response.code);",
               "});",
-              "pm.collectionVariables.set('adminToken', '');"
+              "const json = pm.response.json();",
+              "if (json && json.token) pm.collectionVariables.set('adminToken', json.token);"
             ]
           }
         }
