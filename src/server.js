@@ -1180,6 +1180,95 @@ app.get(
 );
 
 app.get(
+  '/doctor/exams',
+  auth,
+  allowRoles('doctor', 'admin'),
+  asyncRoute(async (req, res) => {
+    const db = getDbOrFail();
+    const assignmentsQuery =
+      req.user.role === 'admin' ? {} : doctorOwnershipFilter(req.user);
+    const assignments = await db.collection('assignments').find(assignmentsQuery).sort({ createdAt: -1 }).toArray();
+
+    const assignmentIds = assignments.flatMap((a) => [a._id, String(a._id)]);
+    const submissions = assignmentIds.length
+      ? await db.collection('submissions').find({ assignmentId: { $in: assignmentIds } }).toArray()
+      : [];
+
+    const items = assignments.map((a) => {
+      const related = submissions.filter((s) => isSameId(s.assignmentId, a._id));
+      const attemptedCount = related.length;
+      const gradedCount = related.filter((s) => s.status === 'graded').length;
+      return {
+        examId: idToString(a._id),
+        title: a.title || 'Untitled exam',
+        type: getAssignmentType(a),
+        status: getAssignmentStatus(a),
+        dueDate: a.dueDate,
+        totalMark: a.totalMark ?? null,
+        attemptedCount,
+        submissions: {
+          graded: gradedCount,
+          pending: attemptedCount - gradedCount,
+        },
+        action: 'view_submissions',
+      };
+    });
+
+    return res.json({ items });
+  })
+);
+
+app.get(
+  '/doctor/exams/:examId/submissions',
+  auth,
+  allowRoles('doctor', 'admin'),
+  asyncRoute(async (req, res) => {
+    const db = getDbOrFail();
+    const assignmentId = parseObjectId(req.params.examId);
+    if (!assignmentId) return res.status(400).json({ message: 'Invalid exam id' });
+
+    const assignment = await db.collection('assignments').findOne({ _id: assignmentId });
+    const access = ensureDoctorAssignmentAccess(assignment, req.user);
+    if (!access.ok) return res.status(access.status).json({ message: access.message });
+
+    const submissions = await db
+      .collection('submissions')
+      .find({ assignmentId: { $in: [assignmentId, String(assignmentId)] } })
+      .sort({ createdAt: -1 })
+      .toArray();
+
+    const attemptedCount = submissions.length;
+    const gradedCount = submissions.filter((s) => s.status === 'graded').length;
+    const pendingCount = attemptedCount - gradedCount;
+
+    const items = submissions.map((s) => ({
+      submissionId: idToString(s._id),
+      studentId: idToString(s.studentId),
+      studentName: s.studentName || s.studentEmail || 'Student',
+      studentEmail: s.studentEmail || '',
+      status: s.status === 'graded' ? 'ai_graded' : s.status === 'submitted' ? 'submitted' : s.status,
+      score: typeof s.score === 'number' ? s.score : null,
+      action: 'review_submission',
+    }));
+
+    return res.json({
+      examId: idToString(assignmentId),
+      title: assignment?.title || 'Untitled exam',
+      type: getAssignmentType(assignment),
+      status: getAssignmentStatus(assignment),
+      dueDate: assignment?.dueDate || null,
+      totalMark: assignment?.totalMark ?? null,
+      attemptedCount,
+      submissions: {
+        graded: gradedCount,
+        pending: pendingCount,
+      },
+      items,
+    });
+  })
+);
+
+app.get(
   '/doctor/submissions/:submissionId/review',
   auth,
   allowRoles('doctor', 'admin'),
@@ -1380,6 +1469,46 @@ app.get(
         avgSimilarity: Number(avgSimilarity.toFixed(2)),
       },
       rows,
+    });
+  })
+);
+
+app.get(
+  '/doctor/exams/:examId/results',
+  auth,
+  allowRoles('doctor', 'admin'),
+  asyncRoute(async (req, res) => {
+    const db = getDbOrFail();
+    const assignmentId = parseObjectId(req.params.examId);
+    if (!assignmentId) return res.status(400).json({ message: 'Invalid exam id' });
+
+    const assignment = await db.collection('assignments').findOne({ _id: assignmentId });
+    const access = ensureDoctorAssignmentAccess(assignment, req.user);
+    if (!access.ok) return res.status(access.status).json({ message: access.message });
+
+    const submissions = await db
+      .collection('submissions')
+      .find({ assignmentId: { $in: [assignmentId, String(assignmentId)] } })
+      .toArray();
+
+    const attemptedCount = submissions.length;
+    const graded = submissions.filter((s) => typeof s.score === 'number');
+    const gradedCount = graded.length;
+    const pendingCount = attemptedCount - gradedCount;
+    const totalMark = Number(assignment?.totalMark ?? 20);
+
+    return res.json({
+      examId: idToString(assignmentId),
+      title: assignment?.title || 'Untitled',
+      type: getAssignmentType(assignment),
+      status: getAssignmentStatus(assignment),
+      dueDate: assignment?.dueDate || null,
+      totalMark,
+      attemptedCount,
+      submissions: {
+        graded: gradedCount,
+        pending: pendingCount,
+      },
     });
   })
 );

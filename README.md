@@ -89,6 +89,14 @@ Authorization: Bearer <jwt_token>
 
 - `GET /analytics/doctor` (doctor/admin)
 
+### Doctor Exam APIs
+
+- `GET /doctor/exams`
+- `GET /doctor/exams/:examId/submissions`
+- `GET /doctor/exams/:examId/results`
+- `GET /doctor/results/ranking`
+- `GET /doctor/results/:assignmentId/details`
+
 ### Users (admin only)
 
 - `PUT /users/:id/role`
