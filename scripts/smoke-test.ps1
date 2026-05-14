@@ -63,6 +63,9 @@ $allPassed = (Assert-Status -Name "register doctor" -Response $regDoctor -Allowe
 $regDoctor2 = Invoke-Api -Method POST -Url "$BaseUrl/api/auth/register" -Body @{ name = "Doctor2"; email = "doctor2_$suffix@example.com"; password = $pw; role = "doctor" }
 $allPassed = (Assert-Status -Name "register doctor2" -Response $regDoctor2 -AllowedStatuses @(200, 201)) -and $allPassed
 
+$regAdmin = Invoke-Api -Method POST -Url "$BaseUrl/api/auth/register" -Body @{ name = "AdminAttempt"; email = "admin_$suffix@example.com"; password = $pw; role = "admin" }
+$allPassed = (Assert-Status -Name "register admin should be rejected" -Response $regAdmin -AllowedStatuses @(400)) -and $allPassed
+
 if (-not $regStudent.ok -or -not $regDoctor.ok -or -not $regDoctor2.ok) {
   Write-Output "Smoke test aborted because registration failed."
   exit 1
@@ -86,6 +89,27 @@ if (-not $createAssignment.ok) {
 }
 
 $assignmentId = $createAssignment.data._id
+
+$doctor2Assignment = Invoke-Api -Method POST -Url "$BaseUrl/assignments" -Headers $hDoctor2 -Body @{
+  title = "Quiz smoke doctor2"
+  description = "smoke test doctor2"
+  totalMark = 10
+  dueDate = "2026-12-31T12:00:00.000Z"
+}
+$allPassed = (Assert-Status -Name "doctor2 creates assignment" -Response $doctor2Assignment -AllowedStatuses @(200, 201)) -and $allPassed
+
+$listAssignmentsDoctor = Invoke-Api -Method GET -Url "$BaseUrl/assignments" -Headers $hDoctor
+$allPassed = (Assert-Status -Name "doctor sees assignments endpoint" -Response $listAssignmentsDoctor -AllowedStatuses @(200)) -and $allPassed
+if ($listAssignmentsDoctor.ok) {
+  $doctorOwnCount = @($listAssignmentsDoctor.data | Where-Object { $_.doctorEmail -eq $regDoctor.data.user.email }).Count
+  $doctorOtherCount = @($listAssignmentsDoctor.data | Where-Object { $_.doctorEmail -ne $regDoctor.data.user.email }).Count
+  if ($doctorOwnCount -ge 1 -and $doctorOtherCount -eq 0) {
+    Write-Output "PASS  doctor assignment scope is restricted to own records"
+  } else {
+    Write-Output "FAIL  doctor assignment scope leaked records from other doctors"
+    $allPassed = $false
+  }
+}
 
 $studentForbiddenCreate = Invoke-Api -Method POST -Url "$BaseUrl/assignments" -Headers $hStudent -Body @{
   title = "invalid"
@@ -114,11 +138,26 @@ $allPassed = (Assert-Status -Name "foreign doctor cannot grade" -Response $forei
 $ownerGrade = Invoke-Api -Method PUT -Url "$BaseUrl/submissions/$submissionId/grade" -Headers $hDoctor -Body @{ score = 8 }
 $allPassed = (Assert-Status -Name "owner doctor grades" -Response $ownerGrade -AllowedStatuses @(200)) -and $allPassed
 
+$foreignSubmissionById = Invoke-Api -Method GET -Url "$BaseUrl/submissions/$submissionId" -Headers $hDoctor2
+$allPassed = (Assert-Status -Name "foreign doctor cannot read submission by id" -Response $foreignSubmissionById -AllowedStatuses @(403)) -and $allPassed
+
 $foreignRead = Invoke-Api -Method GET -Url "$BaseUrl/assignments/$assignmentId/submissions" -Headers $hDoctor2
 $allPassed = (Assert-Status -Name "foreign doctor cannot read submissions" -Response $foreignRead -AllowedStatuses @(403)) -and $allPassed
 
 $ownerRead = Invoke-Api -Method GET -Url "$BaseUrl/assignments/$assignmentId/submissions" -Headers $hDoctor
 $allPassed = (Assert-Status -Name "owner doctor reads submissions" -Response $ownerRead -AllowedStatuses @(200)) -and $allPassed
+
+$doctorSubmissionsMy = Invoke-Api -Method GET -Url "$BaseUrl/submissions/my" -Headers $hDoctor
+$allPassed = (Assert-Status -Name "doctor submissions/my reachable" -Response $doctorSubmissionsMy -AllowedStatuses @(200)) -and $allPassed
+if ($doctorSubmissionsMy.ok) {
+  $foreignDocs = @($doctorSubmissionsMy.data | Where-Object { $_.assignmentId -ne $assignmentId }).Count
+  if ($foreignDocs -eq 0) {
+    Write-Output "PASS  doctor submissions/my scope is restricted to own assignments"
+  } else {
+    Write-Output "FAIL  doctor submissions/my leaked submissions from other assignments"
+    $allPassed = $false
+  }
+}
 
 $aiCheck = Invoke-Api -Method POST -Url "$BaseUrl/ai-detection" -Headers $hStudent -Body @{ text = "hello from smoke test" }
 $allPassed = (Assert-Status -Name "ai-detection reachable or graceful error" -Response $aiCheck -AllowedStatuses @(200, 502)) -and $allPassed
