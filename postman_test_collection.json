@@ -108,7 +108,7 @@
       ]
     },
     {
-      "name": "03 - Register Admin",
+      "name": "03 - Register Admin (Expected Fail)",
       "request": {
         "method": "POST",
         "header": [
@@ -126,11 +126,10 @@
           "script": {
             "type": "text/javascript",
             "exec": [
-              "pm.test('Register admin success', function () {",
-              "  pm.expect([200, 201]).to.include(pm.response.code);",
+              "pm.test('Register admin is blocked', function () {",
+              "  pm.expect(pm.response.code).to.eql(400);",
               "});",
-              "const json = pm.response.json();",
-              "if (json && json.token) pm.collectionVariables.set('adminToken', json.token);"
+              "pm.collectionVariables.set('adminToken', '');"
             ]
           }
         }
