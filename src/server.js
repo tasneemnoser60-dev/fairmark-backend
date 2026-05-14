@@ -188,7 +188,7 @@ const registerSchema = Joi.object({
   name: Joi.string().min(2).max(100).required(),
   email: Joi.string().email().required(),
   password: Joi.string().min(6).max(200).required(),
-  role: Joi.string().valid('student', 'doctor').required(),
+  role: Joi.string().valid('student', 'doctor', 'admin').required(),
 });
 
 const loginSchema = Joi.object({

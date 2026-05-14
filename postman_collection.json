@@ -144,7 +144,7 @@
                                ]
                  },
                  {
-                     "name":  "03 - Register Doctor 2",
+                     "name":  "03 - Register Admin",
                      "request":  {
                                      "method":  "POST",
                                      "header":  [
@@ -155,7 +155,7 @@
                                                 ],
                                      "body":  {
                                                   "mode":  "raw",
-                                                  "raw":  "{\n  \"name\": \"Doctor 2\",\n  \"email\": \"{{adminEmail}}\",\n  \"password\": \"{{password}}\",\n  \"role\": \"doctor\"\n}"
+                                                  "raw":  "{\n  \"name\": \"Admin\",\n  \"email\": \"{{adminEmail}}\",\n  \"password\": \"{{password}}\",\n  \"role\": \"admin\"\n}"
                                               },
                                      "url":  "{{baseUrl}}/api/auth/register"
                                  },
@@ -165,7 +165,7 @@
                                        "script":  {
                                                       "type":  "text/javascript",
                                                       "exec":  [
-                                                                   "pm.test(\u0027Register doctor2 success\u0027, function () {",
+                                                                   "pm.test(\u0027Register admin success\u0027, function () {",
                                                                    "  pm.expect([200, 201]).to.include(pm.response.code);",
                                                                    "});",
                                                                    "const json = pm.response.json();",
