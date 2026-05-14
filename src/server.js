@@ -125,6 +125,10 @@ const mapStudentExamStatus = (submission) => {
   return 'in_progress';
 };
 
+const getAssignmentType = (assignment) => assignment?.type || assignment?.kind || 'exam';
+const getAssignmentStatus = (assignment) =>
+  new Date(assignment?.dueDate || 0) >= new Date() ? 'open' : 'closed';
+
 const auth = async (req, res, next) => {
   try {
     const h = req.headers.authorization || '';
@@ -1025,16 +1029,24 @@ app.get(
 
     const recentExams = assignments.slice(0, 10).map((a) => {
       const related = submissions.filter((s) => isSameId(s.assignmentId, a._id));
-      const studentsCount = related.length;
-      const grading = related.filter((s) => s.status !== 'graded').length;
-      const status = grading > 0 ? 'grading' : studentsCount > 0 ? 'closed' : 'open';
+      const attemptedCount = related.length;
+      const gradedCount = related.filter((s) => s.status === 'graded').length;
+      const pendingCount = attemptedCount - gradedCount;
+      const gradingStatus = pendingCount > 0 ? 'grading' : attemptedCount > 0 ? 'graded' : 'pending';
       return {
         assignmentId: idToString(a._id),
         title: a.title || 'Untitled exam',
+        type: getAssignmentType(a),
+        status: getAssignmentStatus(a),
         dueDate: a.dueDate,
-        studentsCount,
-        status,
-        action: status === 'grading' ? 'grade_exam' : 'view_results',
+        totalMark: a.totalMark ?? null,
+        attemptedCount,
+        submissions: {
+          graded: gradedCount,
+          pending: pendingCount,
+        },
+        gradingStatus,
+        action: pendingCount > 0 ? 'grade_exam' : 'view_results',
       };
     });
 
@@ -1070,8 +1082,8 @@ app.get(
       return {
         assignmentId: idToString(a._id),
         title: a.title || 'Untitled assignment',
-        type: a.kind || 'assignment',
-        status: new Date(a.dueDate) >= new Date() ? 'open' : 'closed',
+        type: getAssignmentType(a),
+        status: getAssignmentStatus(a),
         dueDate: a.dueDate,
         totalMark: a.totalMark ?? null,
         attemptedCount,
@@ -1137,6 +1149,10 @@ app.get(
     return res.json({
       assignmentId: idToString(assignmentId),
       title: assignment?.title || 'Untitled assignment',
+      type: getAssignmentType(assignment),
+      status: getAssignmentStatus(assignment),
+      dueDate: assignment?.dueDate || null,
+      totalMark: assignment?.totalMark ?? null,
       attemptedCount,
       submissions: {
         graded: gradedCount,
@@ -1240,11 +1256,15 @@ app.get(
       return {
         assignmentId: idToString(a._id),
         title: a.title || 'Untitled',
-        kind: a.kind || 'assignment',
-        status: pendingCount > 0 ? 'pending' : 'graded',
-        submissionsCount: related.length,
-        gradedCount,
-        pendingCount,
+        type: getAssignmentType(a),
+        status: getAssignmentStatus(a),
+        dueDate: a.dueDate || null,
+        totalMark: a.totalMark ?? null,
+        attemptedCount: related.length,
+        submissions: {
+          graded: gradedCount,
+          pending: pendingCount,
+        },
         action: 'view_details',
       };
     });
@@ -1328,8 +1348,8 @@ app.get(
     return res.json({
       assignmentId: idToString(assignmentId),
       title: assignment?.title || 'Untitled',
-      type: assignment?.kind || 'assignment',
-      status: new Date(assignment?.dueDate) >= new Date() ? 'open' : 'closed',
+      type: getAssignmentType(assignment),
+      status: getAssignmentStatus(assignment),
       dueDate: assignment?.dueDate || null,
       totalMark,
       attemptedCount,
