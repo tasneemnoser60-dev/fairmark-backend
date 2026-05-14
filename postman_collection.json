@@ -545,6 +545,45 @@
                                                 ],
                                      "url":  "{{baseUrl}}/doctor/profile"
                                  }
+                 },
+                 {
+                     "name":  "20 - Doctor Exams",
+                     "request":  {
+                                     "method":  "GET",
+                                     "header":  [
+                                                    {
+                                                        "key":  "Authorization",
+                                                        "value":  "Bearer {{doctorToken}}"
+                                                    }
+                                                ],
+                                     "url":  "{{baseUrl}}/doctor/exams"
+                                 }
+                 },
+                 {
+                     "name":  "21 - Doctor Exam Submissions",
+                     "request":  {
+                                     "method":  "GET",
+                                     "header":  [
+                                                    {
+                                                        "key":  "Authorization",
+                                                        "value":  "Bearer {{doctorToken}}"
+                                                    }
+                                                ],
+                                     "url":  "{{baseUrl}}/doctor/exams/{{assignmentId}}/submissions"
+                                 }
+                 },
+                 {
+                     "name":  "22 - Doctor Exam Results",
+                     "request":  {
+                                     "method":  "GET",
+                                     "header":  [
+                                                    {
+                                                        "key":  "Authorization",
+                                                        "value":  "Bearer {{doctorToken}}"
+                                                    }
+                                                ],
+                                     "url":  "{{baseUrl}}/doctor/exams/{{assignmentId}}/results"
+                                 }
                  }
              ]
 }
