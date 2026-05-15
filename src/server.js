@@ -313,6 +313,48 @@ app.post(
   createAssignmentHandler
 );
 
+const createExamHandler = asyncRoute(async (req, res) => {
+  const { value, error } = assignmentSchema.validate(req.body, {
+    allowUnknown: true,
+    stripUnknown: true,
+  });
+  if (error) return res.status(400).json({ message: error.message });
+
+  const db = getDbOrFail();
+  const now = new Date();
+  const doctorObjectId = parseObjectId(req.user.id);
+  const uploaded = pickUploadedFile(req.files);
+  const assignmentTextRaw = String(
+    req.body.assignmentText ?? req.body.assignment ?? req.body.text ?? ''
+  ).trim();
+  const assignmentText = assignmentTextRaw || value.assignmentText || '';
+  const doc = {
+    ...value,
+    type: 'exam',
+    kind: 'exam',
+    dueDate: new Date(value.dueDate),
+    doctorId: doctorObjectId || req.user.id,
+    doctorEmail: normalizeEmail(req.user.email),
+    assignmentText,
+    modelAnswer: uploaded
+      ? {
+          originalName: uploaded.originalname,
+          mimeType: uploaded.mimetype,
+          size: uploaded.size,
+          uploadedAt: now,
+        }
+      : null,
+    createdAt: now,
+    updatedAt: now,
+  };
+  const result = await db.collection('assignments').insertOne(doc);
+  doc._id = result.insertedId;
+  return res.status(201).json(doc);
+});
+
+app.post('/exams', auth, allowRoles('doctor', 'admin'), upload.any(), createExamHandler);
+app.post('/api/exams', auth, allowRoles('doctor', 'admin'), upload.any(), createExamHandler);
+
 app.get(
   '/assignments',
   auth,
@@ -326,6 +368,51 @@ app.get(
           : {};
     const docs = await db.collection('assignments').find(query).sort({ createdAt: -1 }).toArray();
     return res.json(docs);
+  })
+);
+
+app.get(
+  '/exams',
+  auth,
+  asyncRoute(async (req, res) => {
+    const db = getDbOrFail();
+    const ownershipQuery =
+      req.user.role === 'admin'
+        ? {}
+        : req.user.role === 'doctor'
+          ? doctorOwnershipFilter(req.user)
+          : {};
+    const examTypeQuery = { $or: [{ type: 'exam' }, { kind: 'exam' }] };
+    const query =
+      Object.keys(ownershipQuery).length > 0
+        ? { $and: [ownershipQuery, examTypeQuery] }
+        : examTypeQuery;
+    const docs = await db
+      .collection('assignments')
+      .find(query)
+      .sort({ createdAt: -1 })
+      .toArray();
+    return res.json(docs);
+  })
+);
+
+app.get(
+  '/exams/:id',
+  auth,
+  asyncRoute(async (req, res) => {
+    const db = getDbOrFail();
+    const _id = parseObjectId(req.params.id);
+    if (!_id) return res.status(400).json({ message: 'Invalid exam id' });
+    const exam = await db.collection('assignments').findOne({
+      _id,
+      $or: [{ type: 'exam' }, { kind: 'exam' }],
+    });
+    if (!exam) return res.status(404).json({ message: 'Exam not found' });
+    if (req.user.role === 'doctor') {
+      const access = ensureDoctorAssignmentAccess(exam, req.user);
+      if (!access.ok) return res.status(access.status).json({ message: access.message });
+    }
+    return res.json(exam);
   })
 );
 

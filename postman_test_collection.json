@@ -313,7 +313,7 @@
         "header": [
           { "key": "Authorization", "value": "Bearer {{doctorToken}}" }
         ],
-        "url": "{{baseUrl}}/doctor/assignments"
+        "url": "{{baseUrl}}/doctor/exams"
       }
     },
     {
@@ -323,7 +323,7 @@
         "header": [
           { "key": "Authorization", "value": "Bearer {{doctorToken}}" }
         ],
-        "url": "{{baseUrl}}/doctor/assignments/{{assignmentId}}/submissions"
+        "url": "{{baseUrl}}/doctor/exams/{{assignmentId}}/submissions"
       }
     },
     {
@@ -333,7 +333,7 @@
         "header": [
           { "key": "Authorization", "value": "Bearer {{doctorToken}}" }
         ],
-        "url": "{{baseUrl}}/doctor/results/{{assignmentId}}/details?sortBy=score"
+        "url": "{{baseUrl}}/doctor/exams/{{assignmentId}}/results"
       }
     }
   ]

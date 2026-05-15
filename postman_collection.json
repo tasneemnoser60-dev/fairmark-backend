@@ -556,7 +556,7 @@
                                                         "value":  "Bearer {{doctorToken}}"
                                                     }
                                                 ],
-                                     "url":  "{{baseUrl}}/doctor/assignments"
+                                     "url":  "{{baseUrl}}/doctor/exams"
                                  }
                  },
                  {
@@ -569,7 +569,7 @@
                                                         "value":  "Bearer {{doctorToken}}"
                                                     }
                                                 ],
-                                     "url":  "{{baseUrl}}/doctor/assignments/{{assignmentId}}/submissions"
+                                     "url":  "{{baseUrl}}/doctor/exams/{{assignmentId}}/submissions"
                                  }
                  },
                  {
@@ -582,7 +582,7 @@
                                                         "value":  "Bearer {{doctorToken}}"
                                                     }
                                                 ],
-                                     "url":  "{{baseUrl}}/doctor/results/{{assignmentId}}/details?sortBy=score"
+                                     "url":  "{{baseUrl}}/doctor/exams/{{assignmentId}}/results"
                                  }
                  }
              ]
