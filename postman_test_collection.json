@@ -14,6 +14,7 @@
     { "key": "doctorToken", "value": "" },
     { "key": "adminToken", "value": "" },
     { "key": "assignmentId", "value": "" },
+    { "key": "examId", "value": "" },
     { "key": "submissionId", "value": "" }
   ],
   "item": [
@@ -314,7 +315,21 @@
           { "key": "Authorization", "value": "Bearer {{doctorToken}}" }
         ],
         "url": "{{baseUrl}}/doctor/exams"
-      }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const json = pm.response.json();",
+              "const first = Array.isArray(json?.items) ? json.items[0] : null;",
+              "const id = first?.examId || first?.assignmentId || '';",
+              "if (id) pm.collectionVariables.set('examId', id);"
+            ]
+          }
+        }
+      ]
     },
     {
       "name": "21 - Doctor Exam Submissions",
@@ -323,7 +338,7 @@
         "header": [
           { "key": "Authorization", "value": "Bearer {{doctorToken}}" }
         ],
-        "url": "{{baseUrl}}/doctor/exams/{{assignmentId}}/submissions"
+        "url": "{{baseUrl}}/doctor/exams/{{examId}}/submissions"
       }
     },
     {
@@ -333,7 +348,7 @@
         "header": [
           { "key": "Authorization", "value": "Bearer {{doctorToken}}" }
         ],
-        "url": "{{baseUrl}}/doctor/exams/{{assignmentId}}/results"
+        "url": "{{baseUrl}}/doctor/exams/{{examId}}/results"
       }
     }
   ]
