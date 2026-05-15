@@ -560,7 +560,7 @@
                                                         "value":  "Bearer {{doctorToken}}"
                                                     }
                                                 ],
-                                     "url":  "{{baseUrl}}/doctor/exams"
+                                     "url":  "{{baseUrl}}/doctor/assignments"
                                  },
                      "event":  [
                                    {
@@ -587,7 +587,7 @@
                                                         "value":  "Bearer {{doctorToken}}"
                                                     }
                                                 ],
-                                     "url":  "{{baseUrl}}/doctor/exams/{{examId}}/submissions"
+                                     "url":  "{{baseUrl}}/doctor/assignments/{{examId}}/submissions"
                                  }
                  },
                  {
@@ -600,7 +600,7 @@
                                                         "value":  "Bearer {{doctorToken}}"
                                                     }
                                                 ],
-                                     "url":  "{{baseUrl}}/doctor/exams/{{examId}}/results"
+                                     "url":  "{{baseUrl}}/doctor/results/{{examId}}/details?sortBy=score"
                                  }
                  }
              ]
