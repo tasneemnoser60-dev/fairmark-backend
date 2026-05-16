@@ -200,7 +200,6 @@ const assignmentSchema = Joi.object({
   title: Joi.string().min(2).max(200).required(),
   description: Joi.string().allow('').default(''),
   assignmentText: Joi.string().allow('').default(''),
-  course: Joi.string().trim().min(1).max(120).allow('').default(''),
   totalMark: Joi.number().min(0).required(),
   dueDate: Joi.date().required(),
 });
@@ -288,7 +287,6 @@ const createAssignmentHandler = asyncRoute(async (req, res) => {
       dueDate: new Date(value.dueDate),
       doctorId: doctorObjectId || req.user.id,
       doctorEmail: req.user.email,
-      course: String(value.course || '').trim(),
       assignmentText,
       modelAnswer: uploaded
         ? {
@@ -337,7 +335,6 @@ const createExamHandler = asyncRoute(async (req, res) => {
     dueDate: new Date(value.dueDate),
     doctorId: doctorObjectId || req.user.id,
     doctorEmail: normalizeEmail(req.user.email),
-    course: String(value.course || '').trim(),
     assignmentText,
     modelAnswer: uploaded
       ? {
@@ -463,7 +460,6 @@ app.put(
     const updates = {
       title: req.body.title ?? current.title,
       description: req.body.description ?? current.description,
-      course: req.body.course ?? current.course,
       totalMark: req.body.totalMark ?? current.totalMark,
       dueDate: req.body.dueDate ? new Date(req.body.dueDate) : current.dueDate,
       updatedAt: new Date(),
