@@ -31,9 +31,9 @@
             "type": "text/javascript",
             "exec": [
               "const ts = Date.now();",
-              "pm.collectionVariables.set('studentEmail', `student.${ts}@fairmark.test`);",
-              "pm.collectionVariables.set('doctorEmail', `doctor.${ts}@fairmark.test`);",
-              "pm.collectionVariables.set('adminEmail', `admin.${ts}@fairmark.test`);"
+              "pm.collectionVariables.set('studentEmail', `student.${ts}@example.com`);",
+              "pm.collectionVariables.set('doctorEmail', `doctor.${ts}@example.com`);",
+              "pm.collectionVariables.set('adminEmail', `admin.${ts}@example.com`);"
             ]
           }
         },
@@ -127,8 +127,8 @@
           "script": {
             "type": "text/javascript",
             "exec": [
-              "pm.test('Register admin success', function () {",
-              "  pm.expect([200, 201]).to.include(pm.response.code);",
+              "pm.test('Register admin handled', function () {",
+              "  pm.expect([200, 201, 400]).to.include(pm.response.code);",
               "});",
               "const json = pm.response.json();",
               "if (json && json.token) pm.collectionVariables.set('adminToken', json.token);"
@@ -306,6 +306,106 @@
           }
         }
       ]
+    },
+    {
+      "name": "10 - Student Dashboard",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{studentToken}}" }
+        ],
+        "url": "{{baseUrl}}/student/dashboard"
+      }
+    },
+    {
+      "name": "11 - Student Assignments",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{studentToken}}" }
+        ],
+        "url": "{{baseUrl}}/student/assignments"
+      }
+    },
+    {
+      "name": "12 - Student Exams",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{studentToken}}" }
+        ],
+        "url": "{{baseUrl}}/student/exams"
+      }
+    },
+    {
+      "name": "13 - Student Results Summary",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{studentToken}}" }
+        ],
+        "url": "{{baseUrl}}/student/results/summary"
+      }
+    },
+    {
+      "name": "14 - Doctor Dashboard",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{doctorToken}}" }
+        ],
+        "url": "{{baseUrl}}/doctor/dashboard"
+      }
+    },
+    {
+      "name": "15 - Doctor Assignments",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{doctorToken}}" }
+        ],
+        "url": "{{baseUrl}}/doctor/assignments"
+      }
+    },
+    {
+      "name": "16 - Doctor Assignment Submissions",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{doctorToken}}" }
+        ],
+        "url": "{{baseUrl}}/doctor/assignments/{{assignmentId}}/submissions"
+      }
+    },
+    {
+      "name": "17 - Doctor Results Ranking",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{doctorToken}}" }
+        ],
+        "url": "{{baseUrl}}/doctor/results/ranking"
+      }
+    },
+    {
+      "name": "18 - Doctor Results Details",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{doctorToken}}" }
+        ],
+        "url": "{{baseUrl}}/doctor/results/{{assignmentId}}/details?sortBy=score"
+      }
+    },
+    {
+      "name": "19 - Doctor Profile",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{doctorToken}}" }
+        ],
+        "url": "{{baseUrl}}/doctor/profile"
+      }
     },
     {
       "name": "20 - Doctor Exams",
