@@ -315,7 +315,15 @@
           { "key": "Authorization", "value": "Bearer {{studentToken}}" }
         ],
         "url": "{{baseUrl}}/student/dashboard"
-      }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": { "type": "text/javascript", "exec": [
+            "pm.test('Student dashboard success', function () { pm.expect(pm.response.code).to.eql(200); });"
+          ] }
+        }
+      ]
     },
     {
       "name": "11 - Student Assignments",
@@ -325,7 +333,15 @@
           { "key": "Authorization", "value": "Bearer {{studentToken}}" }
         ],
         "url": "{{baseUrl}}/student/assignments"
-      }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": { "type": "text/javascript", "exec": [
+            "pm.test('Student assignments success', function () { pm.expect(pm.response.code).to.eql(200); });"
+          ] }
+        }
+      ]
     },
     {
       "name": "12 - Student Exams",
@@ -335,7 +351,15 @@
           { "key": "Authorization", "value": "Bearer {{studentToken}}" }
         ],
         "url": "{{baseUrl}}/student/exams"
-      }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": { "type": "text/javascript", "exec": [
+            "pm.test('Student exams success', function () { pm.expect(pm.response.code).to.eql(200); });"
+          ] }
+        }
+      ]
     },
     {
       "name": "13 - Student Results Summary",
@@ -345,7 +369,15 @@
           { "key": "Authorization", "value": "Bearer {{studentToken}}" }
         ],
         "url": "{{baseUrl}}/student/results/summary"
-      }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": { "type": "text/javascript", "exec": [
+            "pm.test('Student results summary success', function () { pm.expect(pm.response.code).to.eql(200); });"
+          ] }
+        }
+      ]
     },
     {
       "name": "14 - Doctor Dashboard",
@@ -355,60 +387,18 @@
           { "key": "Authorization", "value": "Bearer {{doctorToken}}" }
         ],
         "url": "{{baseUrl}}/doctor/dashboard"
-      }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": { "type": "text/javascript", "exec": [
+            "pm.test('Doctor dashboard success', function () { pm.expect(pm.response.code).to.eql(200); });"
+          ] }
+        }
+      ]
     },
     {
       "name": "15 - Doctor Assignments",
-      "request": {
-        "method": "GET",
-        "header": [
-          { "key": "Authorization", "value": "Bearer {{doctorToken}}" }
-        ],
-        "url": "{{baseUrl}}/doctor/assignments"
-      }
-    },
-    {
-      "name": "16 - Doctor Assignment Submissions",
-      "request": {
-        "method": "GET",
-        "header": [
-          { "key": "Authorization", "value": "Bearer {{doctorToken}}" }
-        ],
-        "url": "{{baseUrl}}/doctor/assignments/{{assignmentId}}/submissions"
-      }
-    },
-    {
-      "name": "17 - Doctor Results Ranking",
-      "request": {
-        "method": "GET",
-        "header": [
-          { "key": "Authorization", "value": "Bearer {{doctorToken}}" }
-        ],
-        "url": "{{baseUrl}}/doctor/results/ranking"
-      }
-    },
-    {
-      "name": "18 - Doctor Results Details",
-      "request": {
-        "method": "GET",
-        "header": [
-          { "key": "Authorization", "value": "Bearer {{doctorToken}}" }
-        ],
-        "url": "{{baseUrl}}/doctor/results/{{assignmentId}}/details?sortBy=score"
-      }
-    },
-    {
-      "name": "19 - Doctor Profile",
-      "request": {
-        "method": "GET",
-        "header": [
-          { "key": "Authorization", "value": "Bearer {{doctorToken}}" }
-        ],
-        "url": "{{baseUrl}}/doctor/profile"
-      }
-    },
-    {
-      "name": "20 - Doctor Exams",
       "request": {
         "method": "GET",
         "header": [
@@ -419,9 +409,100 @@
       "event": [
         {
           "listen": "test",
+          "script": { "type": "text/javascript", "exec": [
+            "pm.test('Doctor assignments success', function () { pm.expect(pm.response.code).to.eql(200); });"
+          ] }
+        }
+      ]
+    },
+    {
+      "name": "16 - Doctor Assignment Submissions",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{doctorToken}}" }
+        ],
+        "url": "{{baseUrl}}/doctor/assignments/{{assignmentId}}/submissions"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": { "type": "text/javascript", "exec": [
+            "pm.test('Doctor assignment submissions success', function () { pm.expect(pm.response.code).to.eql(200); });"
+          ] }
+        }
+      ]
+    },
+    {
+      "name": "17 - Doctor Results Ranking",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{doctorToken}}" }
+        ],
+        "url": "{{baseUrl}}/doctor/results/ranking"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": { "type": "text/javascript", "exec": [
+            "pm.test('Doctor results ranking success', function () { pm.expect(pm.response.code).to.eql(200); });"
+          ] }
+        }
+      ]
+    },
+    {
+      "name": "18 - Doctor Results Details",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{doctorToken}}" }
+        ],
+        "url": "{{baseUrl}}/doctor/results/{{assignmentId}}/details?sortBy=score"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": { "type": "text/javascript", "exec": [
+            "pm.test('Doctor results details success', function () { pm.expect(pm.response.code).to.eql(200); });"
+          ] }
+        }
+      ]
+    },
+    {
+      "name": "19 - Doctor Profile",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{doctorToken}}" }
+        ],
+        "url": "{{baseUrl}}/doctor/profile"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": { "type": "text/javascript", "exec": [
+            "pm.test('Doctor profile success', function () { pm.expect(pm.response.code).to.eql(200); });"
+          ] }
+        }
+      ]
+    },
+    {
+      "name": "20 - Doctor Exams",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{doctorToken}}" }
+        ],
+        "url": "{{baseUrl}}/doctor/exams"
+      },
+      "event": [
+        {
+          "listen": "test",
           "script": {
             "type": "text/javascript",
             "exec": [
+              "pm.test('Doctor exams success', function () { pm.expect(pm.response.code).to.eql(200); });",
               "const json = pm.response.json();",
               "const first = Array.isArray(json?.items) ? json.items[0] : null;",
               "const id = first?.examId || first?.assignmentId || '';",
@@ -438,8 +519,16 @@
         "header": [
           { "key": "Authorization", "value": "Bearer {{doctorToken}}" }
         ],
-        "url": "{{baseUrl}}/doctor/assignments/{{examId}}/submissions"
-      }
+        "url": "{{baseUrl}}/doctor/exams/{{examId}}/submissions"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": { "type": "text/javascript", "exec": [
+            "pm.test('Doctor exam submissions success', function () { pm.expect(pm.response.code).to.eql(200); });"
+          ] }
+        }
+      ]
     },
     {
       "name": "22 - Doctor Exam Results",
@@ -448,8 +537,16 @@
         "header": [
           { "key": "Authorization", "value": "Bearer {{doctorToken}}" }
         ],
-        "url": "{{baseUrl}}/doctor/results/{{examId}}/details?sortBy=score"
-      }
+        "url": "{{baseUrl}}/doctor/exams/{{examId}}/results"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": { "type": "text/javascript", "exec": [
+            "pm.test('Doctor exam results success', function () { pm.expect(pm.response.code).to.eql(200); });"
+          ] }
+        }
+      ]
     }
   ]
 }

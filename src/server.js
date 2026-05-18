@@ -146,6 +146,7 @@ const mapStudentExamStatus = (submission) => {
 const getAssignmentType = (assignment) => assignment?.type || assignment?.kind || 'exam';
 const getAssignmentStatus = (assignment) =>
   new Date(assignment?.dueDate || 0) >= new Date() ? 'open' : 'closed';
+const isExamAssignment = (assignment) => getAssignmentType(assignment) === 'exam';
 
 const auth = async (req, res, next) => {
   try {
@@ -188,7 +189,7 @@ const registerSchema = Joi.object({
   name: Joi.string().min(2).max(100).required(),
   email: Joi.string().email().required(),
   password: Joi.string().min(6).max(200).required(),
-  role: Joi.string().valid('student', 'doctor', 'admin').required(),
+  role: Joi.string().valid('student', 'doctor').required(),
 });
 
 const loginSchema = Joi.object({
@@ -1272,8 +1273,10 @@ app.get(
   allowRoles('doctor', 'admin'),
   asyncRoute(async (req, res) => {
     const db = getDbOrFail();
+    const ownershipQuery = req.user.role === 'admin' ? {} : doctorOwnershipFilter(req.user);
+    const examTypeQuery = { $or: [{ type: 'exam' }, { kind: 'exam' }] };
     const assignmentsQuery =
-      req.user.role === 'admin' ? {} : doctorOwnershipFilter(req.user);
+      Object.keys(ownershipQuery).length > 0 ? { $and: [ownershipQuery, examTypeQuery] } : examTypeQuery;
     const assignments = await db.collection('assignments').find(assignmentsQuery).sort({ createdAt: -1 }).toArray();
 
     const assignmentIds = assignments.flatMap((a) => [a._id, String(a._id)]);
@@ -1317,6 +1320,7 @@ app.get(
     const assignment = await db.collection('assignments').findOne({ _id: assignmentId });
     const access = ensureDoctorAssignmentAccess(assignment, req.user);
     if (!access.ok) return res.status(access.status).json({ message: access.message });
+    if (!isExamAssignment(assignment)) return res.status(404).json({ message: 'Exam not found' });
 
     const submissions = await db
       .collection('submissions')
@@ -1477,6 +1481,7 @@ app.get(
     const assignment = await db.collection('assignments').findOne({ _id: assignmentId });
     const access = ensureDoctorAssignmentAccess(assignment, req.user);
     if (!access.ok) return res.status(access.status).json({ message: access.message });
+    if (!isExamAssignment(assignment)) return res.status(404).json({ message: 'Exam not found' });
 
     const submissions = await db
       .collection('submissions')
