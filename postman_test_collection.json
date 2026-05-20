@@ -13,6 +13,7 @@
     { "key": "studentToken", "value": "" },
     { "key": "doctorToken", "value": "" },
     { "key": "adminToken", "value": "" },
+    { "key": "doctorId", "value": "" },
     { "key": "assignmentId", "value": "" },
     { "key": "examId", "value": "" },
     { "key": "submissionId", "value": "" }
@@ -102,7 +103,8 @@
               "  pm.expect([200, 201]).to.include(pm.response.code);",
               "});",
               "const json = pm.response.json();",
-              "if (json && json.token) pm.collectionVariables.set('doctorToken', json.token);"
+              "if (json && json.token) pm.collectionVariables.set('doctorToken', json.token);",
+              "if (json && json.user && json.user.id) pm.collectionVariables.set('doctorId', json.user.id);"
             ]
           }
         }
@@ -128,7 +130,7 @@
             "type": "text/javascript",
             "exec": [
               "pm.test('Register admin handled', function () {",
-              "  pm.expect([200, 201, 400]).to.include(pm.response.code);",
+              "  pm.expect([200, 201]).to.include(pm.response.code);",
               "});",
               "const json = pm.response.json();",
               "if (json && json.token) pm.collectionVariables.set('adminToken', json.token);"
@@ -545,6 +547,73 @@
           "script": { "type": "text/javascript", "exec": [
             "pm.test('Doctor exam results success', function () { pm.expect(pm.response.code).to.eql(200); });"
           ] }
+        }
+      ]
+    },
+    {
+      "name": "23 - Update Doctor Profile",
+      "request": {
+        "method": "PUT",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{doctorToken}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"department\": \"CS\",\n  \"courses\": [\"AI\", \"Networks\"]\n}"
+        },
+        "url": "{{baseUrl}}/doctor/profile"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Update doctor profile success', function () {",
+              "  pm.expect(pm.response.code).to.eql(200);",
+              "});",
+              "const json = pm.response.json();",
+              "pm.test('Updated profile shape', function () {",
+              "  pm.expect(json).to.have.property('doctor');",
+              "  pm.expect(json.doctor).to.have.property('department');",
+              "  pm.expect(json.doctor).to.have.property('courses');",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "24 - Admin Update Doctor Profile",
+      "request": {
+        "method": "PUT",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{adminToken}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"department\": \"Engineering\",\n  \"courses\": [\"AI\", \"Cloud\", \"Networks\"],\n  \"phone\": \"+201000000000\",\n  \"role\": \"doctor\"\n}"
+        },
+        "url": "{{baseUrl}}/admin/users/{{doctorId}}/profile"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Admin updates doctor profile', function () {",
+              "  pm.expect(pm.response.code).to.eql(200);",
+              "});",
+              "const json = pm.response.json();",
+              "pm.test('Updated user payload', function () {",
+              "  pm.expect(json).to.have.property('user');",
+              "  pm.expect(json.user.role).to.eql('doctor');",
+              "});"
+            ]
+          }
         }
       ]
     }

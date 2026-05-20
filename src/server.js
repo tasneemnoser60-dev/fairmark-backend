@@ -189,7 +189,7 @@ const registerSchema = Joi.object({
   name: Joi.string().min(2).max(100).required(),
   email: Joi.string().email().required(),
   password: Joi.string().min(6).max(200).required(),
-  role: Joi.string().valid('student', 'doctor').required(),
+  role: Joi.string().valid('student', 'doctor', 'admin').required(),
 });
 
 const loginSchema = Joi.object({
@@ -1910,6 +1910,55 @@ app.put(
     const updated = unwrapFindOneAndUpdateResult(result);
     if (!updated) return res.status(404).json({ message: 'User not found' });
     return res.json(okUser(updated));
+  })
+);
+
+app.put(
+  '/admin/users/:id/profile',
+  auth,
+  allowRoles('admin'),
+  asyncRoute(async (req, res) => {
+    const db = getDbOrFail();
+    const _id = parseObjectId(req.params.id);
+    if (!_id) return res.status(400).json({ message: 'Invalid user id' });
+
+    const role = req.body.role === undefined ? undefined : String(req.body.role || '');
+    if (role !== undefined && !['student', 'doctor', 'admin'].includes(role)) {
+      return res.status(400).json({ message: 'Invalid role' });
+    }
+
+    const updates = { updatedAt: new Date() };
+    if (req.body.name !== undefined) updates.name = String(req.body.name || '').trim();
+    if (req.body.department !== undefined) updates.department = String(req.body.department || '').trim();
+    if (req.body.phone !== undefined) updates.phone = String(req.body.phone || '').trim();
+    if (req.body.courses !== undefined) {
+      if (!Array.isArray(req.body.courses)) {
+        return res.status(400).json({ message: 'courses must be an array of strings' });
+      }
+      updates.courses = [...new Set(req.body.courses.map((c) => String(c || '').trim()).filter(Boolean))];
+    }
+    if (role !== undefined) updates.role = role;
+
+    const result = await db.collection('users').findOneAndUpdate(
+      { _id },
+      { $set: updates },
+      { returnDocument: 'after' }
+    );
+    const updated = unwrapFindOneAndUpdateResult(result);
+    if (!updated) return res.status(404).json({ message: 'User not found' });
+
+    return res.json({
+      message: 'User profile updated',
+      user: {
+        id: idToString(updated._id),
+        name: updated.name || '',
+        email: updated.email || '',
+        role: updated.role || '',
+        department: updated.department || '',
+        phone: updated.phone || '',
+        courses: Array.isArray(updated.courses) ? updated.courses : [],
+      },
+    });
   })
 );
 
