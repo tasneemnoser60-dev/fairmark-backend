@@ -205,6 +205,11 @@ const assignmentSchema = Joi.object({
   dueDate: Joi.date().required(),
 });
 
+const doctorProfileUpdateSchema = Joi.object({
+  department: Joi.string().trim().allow('').max(120).optional(),
+  courses: Joi.array().items(Joi.string().trim().min(1).max(120)).max(50).optional(),
+}).or('department', 'courses');
+
 app.get('/health', (_req, res) => {
   res.json({ ok: true, service: 'flutter-backend-api' });
 });
@@ -1667,6 +1672,54 @@ app.get(
         pendingGrading,
       },
       courses: Array.isArray(user?.courses) ? user.courses : [],
+    });
+  })
+);
+
+app.put(
+  '/doctor/profile',
+  auth,
+  allowRoles('doctor', 'admin'),
+  asyncRoute(async (req, res) => {
+    const db = getDbOrFail();
+    const { value, error } = doctorProfileUpdateSchema.validate(req.body, {
+      allowUnknown: false,
+      stripUnknown: true,
+    });
+    if (error) return res.status(400).json({ message: error.message });
+
+    const userId = parseObjectId(req.user.id);
+    if (!userId) return res.status(400).json({ message: 'Invalid user id in token' });
+
+    const updates = {
+      updatedAt: new Date(),
+    };
+    if (Object.prototype.hasOwnProperty.call(value, 'department')) {
+      updates.department = String(value.department || '').trim();
+    }
+    if (Object.prototype.hasOwnProperty.call(value, 'courses')) {
+      const uniqueCourses = [...new Set((value.courses || []).map((c) => String(c).trim()).filter(Boolean))];
+      updates.courses = uniqueCourses;
+    }
+
+    const result = await db.collection('users').findOneAndUpdate(
+      { _id: userId },
+      { $set: updates },
+      { returnDocument: 'after' }
+    );
+    const doctor = unwrapFindOneAndUpdateResult(result);
+    if (!doctor) return res.status(404).json({ message: 'Doctor not found' });
+
+    return res.json({
+      message: 'Profile updated',
+      doctor: {
+        id: idToString(doctor._id),
+        name: doctor.name || '',
+        email: doctor.email || '',
+        role: doctor.role || req.user.role || 'doctor',
+        department: doctor.department || '',
+        courses: Array.isArray(doctor.courses) ? doctor.courses : [],
+      },
     });
   })
 );
