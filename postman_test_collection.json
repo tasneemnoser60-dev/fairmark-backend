@@ -5,18 +5,54 @@
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
-    { "key": "baseUrl", "value": "https://fairmark-backend-production.up.railway.app" },
-    { "key": "password", "value": "Passw0rd!" },
-    { "key": "studentEmail", "value": "" },
-    { "key": "doctorEmail", "value": "" },
-    { "key": "adminEmail", "value": "" },
-    { "key": "studentToken", "value": "" },
-    { "key": "doctorToken", "value": "" },
-    { "key": "adminToken", "value": "" },
-    { "key": "doctorId", "value": "" },
-    { "key": "assignmentId", "value": "" },
-    { "key": "examId", "value": "" },
-    { "key": "submissionId", "value": "" }
+    {
+      "key": "baseUrl",
+      "value": "https://fairmark-backend-production.up.railway.app"
+    },
+    {
+      "key": "password",
+      "value": "Passw0rd!"
+    },
+    {
+      "key": "studentEmail",
+      "value": ""
+    },
+    {
+      "key": "doctorEmail",
+      "value": ""
+    },
+    {
+      "key": "adminEmail",
+      "value": ""
+    },
+    {
+      "key": "studentToken",
+      "value": ""
+    },
+    {
+      "key": "doctorToken",
+      "value": ""
+    },
+    {
+      "key": "adminToken",
+      "value": ""
+    },
+    {
+      "key": "doctorId",
+      "value": ""
+    },
+    {
+      "key": "assignmentId",
+      "value": ""
+    },
+    {
+      "key": "examId",
+      "value": ""
+    },
+    {
+      "key": "submissionId",
+      "value": ""
+    }
   ],
   "item": [
     {
@@ -56,7 +92,10 @@
       "request": {
         "method": "POST",
         "header": [
-          { "key": "Content-Type", "value": "application/json" }
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
         ],
         "body": {
           "mode": "raw",
@@ -85,7 +124,10 @@
       "request": {
         "method": "POST",
         "header": [
-          { "key": "Content-Type", "value": "application/json" }
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
         ],
         "body": {
           "mode": "raw",
@@ -115,7 +157,10 @@
       "request": {
         "method": "POST",
         "header": [
-          { "key": "Content-Type", "value": "application/json" }
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
         ],
         "body": {
           "mode": "raw",
@@ -144,8 +189,14 @@
       "request": {
         "method": "POST",
         "header": [
-          { "key": "Authorization", "value": "Bearer {{doctorToken}}" },
-          { "key": "Content-Type", "value": "application/json" }
+          {
+            "key": "Authorization",
+            "value": "Bearer {{doctorToken}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
         ],
         "body": {
           "mode": "raw",
@@ -174,7 +225,10 @@
       "request": {
         "method": "GET",
         "header": [
-          { "key": "Authorization", "value": "Bearer {{doctorToken}}" }
+          {
+            "key": "Authorization",
+            "value": "Bearer {{doctorToken}}"
+          }
         ],
         "url": "{{baseUrl}}/assignments"
       },
@@ -197,13 +251,24 @@
       "request": {
         "method": "POST",
         "header": [
-          { "key": "Authorization", "value": "Bearer {{studentToken}}" }
+          {
+            "key": "Authorization",
+            "value": "Bearer {{studentToken}}"
+          }
         ],
         "body": {
           "mode": "formdata",
           "formdata": [
-            { "key": "assignmentId", "value": "{{assignmentId}}", "type": "text" },
-            { "key": "answerText", "value": "This is my answer", "type": "text" }
+            {
+              "key": "assignmentId",
+              "value": "{{assignmentId}}",
+              "type": "text"
+            },
+            {
+              "key": "answerText",
+              "value": "This is my answer",
+              "type": "text"
+            }
           ]
         },
         "url": "{{baseUrl}}/submissions"
@@ -229,8 +294,14 @@
       "request": {
         "method": "PUT",
         "header": [
-          { "key": "Authorization", "value": "Bearer {{doctorToken}}" },
-          { "key": "Content-Type", "value": "application/json" }
+          {
+            "key": "Authorization",
+            "value": "Bearer {{doctorToken}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
         ],
         "body": {
           "mode": "raw",
@@ -257,8 +328,14 @@
       "request": {
         "method": "POST",
         "header": [
-          { "key": "Authorization", "value": "Bearer {{studentToken}}" },
-          { "key": "Content-Type", "value": "application/json" }
+          {
+            "key": "Authorization",
+            "value": "Bearer {{studentToken}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
         ],
         "body": {
           "mode": "raw",
@@ -285,12 +362,19 @@
       "request": {
         "method": "POST",
         "header": [
-          { "key": "Authorization", "value": "Bearer {{doctorToken}}" }
+          {
+            "key": "Authorization",
+            "value": "Bearer {{doctorToken}}"
+          }
         ],
         "body": {
           "mode": "formdata",
           "formdata": [
-            { "key": "file", "type": "file", "src": "" }
+            {
+              "key": "file",
+              "type": "file",
+              "src": ""
+            }
           ]
         },
         "url": "{{baseUrl}}/assignments/{{assignmentId}}/model-answer"
@@ -314,16 +398,22 @@
       "request": {
         "method": "GET",
         "header": [
-          { "key": "Authorization", "value": "Bearer {{studentToken}}" }
+          {
+            "key": "Authorization",
+            "value": "Bearer {{studentToken}}"
+          }
         ],
         "url": "{{baseUrl}}/student/dashboard"
       },
       "event": [
         {
           "listen": "test",
-          "script": { "type": "text/javascript", "exec": [
-            "pm.test('Student dashboard success', function () { pm.expect(pm.response.code).to.eql(200); });"
-          ] }
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Student dashboard success', function () { pm.expect(pm.response.code).to.eql(200); });"
+            ]
+          }
         }
       ]
     },
@@ -332,16 +422,22 @@
       "request": {
         "method": "GET",
         "header": [
-          { "key": "Authorization", "value": "Bearer {{studentToken}}" }
+          {
+            "key": "Authorization",
+            "value": "Bearer {{studentToken}}"
+          }
         ],
         "url": "{{baseUrl}}/student/assignments"
       },
       "event": [
         {
           "listen": "test",
-          "script": { "type": "text/javascript", "exec": [
-            "pm.test('Student assignments success', function () { pm.expect(pm.response.code).to.eql(200); });"
-          ] }
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Student assignments success', function () { pm.expect(pm.response.code).to.eql(200); });"
+            ]
+          }
         }
       ]
     },
@@ -350,16 +446,22 @@
       "request": {
         "method": "GET",
         "header": [
-          { "key": "Authorization", "value": "Bearer {{studentToken}}" }
+          {
+            "key": "Authorization",
+            "value": "Bearer {{studentToken}}"
+          }
         ],
         "url": "{{baseUrl}}/student/exams"
       },
       "event": [
         {
           "listen": "test",
-          "script": { "type": "text/javascript", "exec": [
-            "pm.test('Student exams success', function () { pm.expect(pm.response.code).to.eql(200); });"
-          ] }
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Student exams success', function () { pm.expect(pm.response.code).to.eql(200); });"
+            ]
+          }
         }
       ]
     },
@@ -368,16 +470,22 @@
       "request": {
         "method": "GET",
         "header": [
-          { "key": "Authorization", "value": "Bearer {{studentToken}}" }
+          {
+            "key": "Authorization",
+            "value": "Bearer {{studentToken}}"
+          }
         ],
         "url": "{{baseUrl}}/student/results/summary"
       },
       "event": [
         {
           "listen": "test",
-          "script": { "type": "text/javascript", "exec": [
-            "pm.test('Student results summary success', function () { pm.expect(pm.response.code).to.eql(200); });"
-          ] }
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Student results summary success', function () { pm.expect(pm.response.code).to.eql(200); });"
+            ]
+          }
         }
       ]
     },
@@ -386,16 +494,22 @@
       "request": {
         "method": "GET",
         "header": [
-          { "key": "Authorization", "value": "Bearer {{doctorToken}}" }
+          {
+            "key": "Authorization",
+            "value": "Bearer {{doctorToken}}"
+          }
         ],
         "url": "{{baseUrl}}/doctor/dashboard"
       },
       "event": [
         {
           "listen": "test",
-          "script": { "type": "text/javascript", "exec": [
-            "pm.test('Doctor dashboard success', function () { pm.expect(pm.response.code).to.eql(200); });"
-          ] }
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Doctor dashboard success', function () { pm.expect(pm.response.code).to.eql(200); });"
+            ]
+          }
         }
       ]
     },
@@ -404,16 +518,22 @@
       "request": {
         "method": "GET",
         "header": [
-          { "key": "Authorization", "value": "Bearer {{doctorToken}}" }
+          {
+            "key": "Authorization",
+            "value": "Bearer {{doctorToken}}"
+          }
         ],
         "url": "{{baseUrl}}/doctor/assignments"
       },
       "event": [
         {
           "listen": "test",
-          "script": { "type": "text/javascript", "exec": [
-            "pm.test('Doctor assignments success', function () { pm.expect(pm.response.code).to.eql(200); });"
-          ] }
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Doctor assignments success', function () { pm.expect(pm.response.code).to.eql(200); });"
+            ]
+          }
         }
       ]
     },
@@ -422,16 +542,22 @@
       "request": {
         "method": "GET",
         "header": [
-          { "key": "Authorization", "value": "Bearer {{doctorToken}}" }
+          {
+            "key": "Authorization",
+            "value": "Bearer {{doctorToken}}"
+          }
         ],
         "url": "{{baseUrl}}/doctor/assignments/{{assignmentId}}/submissions"
       },
       "event": [
         {
           "listen": "test",
-          "script": { "type": "text/javascript", "exec": [
-            "pm.test('Doctor assignment submissions success', function () { pm.expect(pm.response.code).to.eql(200); });"
-          ] }
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Doctor assignment submissions success', function () { pm.expect(pm.response.code).to.eql(200); });"
+            ]
+          }
         }
       ]
     },
@@ -440,16 +566,22 @@
       "request": {
         "method": "GET",
         "header": [
-          { "key": "Authorization", "value": "Bearer {{doctorToken}}" }
+          {
+            "key": "Authorization",
+            "value": "Bearer {{doctorToken}}"
+          }
         ],
         "url": "{{baseUrl}}/doctor/results/ranking"
       },
       "event": [
         {
           "listen": "test",
-          "script": { "type": "text/javascript", "exec": [
-            "pm.test('Doctor results ranking success', function () { pm.expect(pm.response.code).to.eql(200); });"
-          ] }
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Doctor results ranking success', function () { pm.expect(pm.response.code).to.eql(200); });"
+            ]
+          }
         }
       ]
     },
@@ -458,16 +590,22 @@
       "request": {
         "method": "GET",
         "header": [
-          { "key": "Authorization", "value": "Bearer {{doctorToken}}" }
+          {
+            "key": "Authorization",
+            "value": "Bearer {{doctorToken}}"
+          }
         ],
         "url": "{{baseUrl}}/doctor/results/{{assignmentId}}/details?sortBy=score"
       },
       "event": [
         {
           "listen": "test",
-          "script": { "type": "text/javascript", "exec": [
-            "pm.test('Doctor results details success', function () { pm.expect(pm.response.code).to.eql(200); });"
-          ] }
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Doctor results details success', function () { pm.expect(pm.response.code).to.eql(200); });"
+            ]
+          }
         }
       ]
     },
@@ -476,16 +614,58 @@
       "request": {
         "method": "GET",
         "header": [
-          { "key": "Authorization", "value": "Bearer {{doctorToken}}" }
+          {
+            "key": "Authorization",
+            "value": "Bearer {{doctorToken}}"
+          }
         ],
         "url": "{{baseUrl}}/doctor/profile"
       },
       "event": [
         {
           "listen": "test",
-          "script": { "type": "text/javascript", "exec": [
-            "pm.test('Doctor profile success', function () { pm.expect(pm.response.code).to.eql(200); });"
-          ] }
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Doctor profile success', function () { pm.expect(pm.response.code).to.eql(200); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "20 - Create Exam (Doctor)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{doctorToken}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"title\": \"Exam {{now}}\",\n  \"description\": \"Auto created exam for test flow\",\n  \"totalMark\": 30,\n  \"dueDate\": \"2026-12-31T12:00:00.000Z\"\n}"
+        },
+        "url": "{{baseUrl}}/exams"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Create exam success', function () { pm.expect(pm.response.code).to.be.oneOf([200, 201]); });",
+              "const json = pm.response.json();",
+              "const id = json?._id || json?.assignmentId || '';",
+              "pm.test('Exam id captured', function () { pm.expect(id).to.be.a('string').and.not.empty; });",
+              "pm.collectionVariables.set('examId', id);"
+            ]
+          }
         }
       ]
     },
@@ -494,7 +674,10 @@
       "request": {
         "method": "GET",
         "header": [
-          { "key": "Authorization", "value": "Bearer {{doctorToken}}" }
+          {
+            "key": "Authorization",
+            "value": "Bearer {{doctorToken}}"
+          }
         ],
         "url": "{{baseUrl}}/doctor/exams"
       },
@@ -507,8 +690,9 @@
               "pm.test('Doctor exams success', function () { pm.expect(pm.response.code).to.eql(200); });",
               "const json = pm.response.json();",
               "const first = Array.isArray(json?.items) ? json.items[0] : null;",
-              "const id = first?.examId || first?.assignmentId || '';",
-              "if (id) pm.collectionVariables.set('examId', id);"
+              "const id = first?.examId || first?.assignmentId || pm.collectionVariables.get('examId') || '';",
+              "if (id) pm.collectionVariables.set('examId', id);",
+              "pm.test('Exam id exists for next requests', function () { pm.expect(pm.collectionVariables.get('examId')).to.be.a('string').and.not.empty; });"
             ]
           }
         }
@@ -519,16 +703,22 @@
       "request": {
         "method": "GET",
         "header": [
-          { "key": "Authorization", "value": "Bearer {{doctorToken}}" }
+          {
+            "key": "Authorization",
+            "value": "Bearer {{doctorToken}}"
+          }
         ],
         "url": "{{baseUrl}}/doctor/exams/{{examId}}/submissions"
       },
       "event": [
         {
           "listen": "test",
-          "script": { "type": "text/javascript", "exec": [
-            "pm.test('Doctor exam submissions success', function () { pm.expect(pm.response.code).to.eql(200); });"
-          ] }
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Doctor exam submissions success', function () { pm.expect(pm.response.code).to.eql(200); });"
+            ]
+          }
         }
       ]
     },
@@ -537,16 +727,22 @@
       "request": {
         "method": "GET",
         "header": [
-          { "key": "Authorization", "value": "Bearer {{doctorToken}}" }
+          {
+            "key": "Authorization",
+            "value": "Bearer {{doctorToken}}"
+          }
         ],
         "url": "{{baseUrl}}/doctor/exams/{{examId}}/results"
       },
       "event": [
         {
           "listen": "test",
-          "script": { "type": "text/javascript", "exec": [
-            "pm.test('Doctor exam results success', function () { pm.expect(pm.response.code).to.eql(200); });"
-          ] }
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Doctor exam results success', function () { pm.expect(pm.response.code).to.eql(200); });"
+            ]
+          }
         }
       ]
     },
@@ -555,8 +751,14 @@
       "request": {
         "method": "PUT",
         "header": [
-          { "key": "Authorization", "value": "Bearer {{doctorToken}}" },
-          { "key": "Content-Type", "value": "application/json" }
+          {
+            "key": "Authorization",
+            "value": "Bearer {{doctorToken}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
         ],
         "body": {
           "mode": "raw",
@@ -589,8 +791,14 @@
       "request": {
         "method": "PUT",
         "header": [
-          { "key": "Authorization", "value": "Bearer {{adminToken}}" },
-          { "key": "Content-Type", "value": "application/json" }
+          {
+            "key": "Authorization",
+            "value": "Bearer {{adminToken}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
         ],
         "body": {
           "mode": "raw",
