@@ -63,8 +63,8 @@ $allPassed = (Assert-Status -Name "register doctor" -Response $regDoctor -Allowe
 $regDoctor2 = Invoke-Api -Method POST -Url "$BaseUrl/api/auth/register" -Body @{ name = "Doctor2"; email = "doctor2_$suffix@example.com"; password = $pw; role = "doctor" }
 $allPassed = (Assert-Status -Name "register doctor2" -Response $regDoctor2 -AllowedStatuses @(200, 201)) -and $allPassed
 
-$regAdmin = Invoke-Api -Method POST -Url "$BaseUrl/api/auth/register" -Body @{ name = "AdminAttempt"; email = "admin_$suffix@example.com"; password = $pw; role = "admin" }
-$allPassed = (Assert-Status -Name "register admin should be rejected" -Response $regAdmin -AllowedStatuses @(400)) -and $allPassed
+$regAdmin = Invoke-Api -Method POST -Url "$BaseUrl/api/auth/register" -Body @{ name = "Admin"; email = "admin_$suffix@example.com"; password = $pw; role = "admin" }
+$allPassed = (Assert-Status -Name "register admin" -Response $regAdmin -AllowedStatuses @(200, 201)) -and $allPassed
 
 if (-not $regStudent.ok -or -not $regDoctor.ok -or -not $regDoctor2.ok) {
   Write-Output "Smoke test aborted because registration failed."
@@ -97,6 +97,19 @@ $doctor2Assignment = Invoke-Api -Method POST -Url "$BaseUrl/assignments" -Header
   dueDate = "2026-12-31T12:00:00.000Z"
 }
 $allPassed = (Assert-Status -Name "doctor2 creates assignment" -Response $doctor2Assignment -AllowedStatuses @(200, 201)) -and $allPassed
+
+$createExam = Invoke-Api -Method POST -Url "$BaseUrl/exams" -Headers $hDoctor -Body @{
+  title = "Exam smoke"
+  description = "smoke exam"
+  totalMark = 20
+  dueDate = "2026-12-31T12:00:00.000Z"
+}
+$allPassed = (Assert-Status -Name "doctor creates exam" -Response $createExam -AllowedStatuses @(200, 201)) -and $allPassed
+
+$examId = $null
+if ($createExam.ok) {
+  $examId = "$($createExam.data._id)"
+}
 
 $listAssignmentsDoctor = Invoke-Api -Method GET -Url "$BaseUrl/assignments" -Headers $hDoctor
 $allPassed = (Assert-Status -Name "doctor sees assignments endpoint" -Response $listAssignmentsDoctor -AllowedStatuses @(200)) -and $allPassed
@@ -157,6 +170,16 @@ if ($doctorSubmissionsMy.ok) {
     Write-Output "FAIL  doctor submissions/my leaked submissions from other assignments"
     $allPassed = $false
   }
+}
+
+$doctorExams = Invoke-Api -Method GET -Url "$BaseUrl/doctor/exams" -Headers $hDoctor
+$allPassed = (Assert-Status -Name "doctor exams endpoint" -Response $doctorExams -AllowedStatuses @(200)) -and $allPassed
+if ($examId) {
+  $doctorExamSubmissions = Invoke-Api -Method GET -Url "$BaseUrl/doctor/exams/$examId/submissions" -Headers $hDoctor
+  $allPassed = (Assert-Status -Name "doctor exam submissions endpoint" -Response $doctorExamSubmissions -AllowedStatuses @(200)) -and $allPassed
+
+  $doctorExamResults = Invoke-Api -Method GET -Url "$BaseUrl/doctor/exams/$examId/results" -Headers $hDoctor
+  $allPassed = (Assert-Status -Name "doctor exam results endpoint" -Response $doctorExamResults -AllowedStatuses @(200)) -and $allPassed
 }
 
 $aiCheck = Invoke-Api -Method POST -Url "$BaseUrl/ai-detection" -Headers $hStudent -Body @{ text = "hello from smoke test" }

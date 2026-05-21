@@ -34,7 +34,19 @@ const trustProxy =
 app.set('trust proxy', trustProxy);
 
 app.use(helmet());
-app.use(cors());
+const corsOriginEnv = (process.env.CORS_ORIGIN || '').trim();
+const corsOrigins = corsOriginEnv
+  ? corsOriginEnv
+      .split(',')
+      .map((origin) => origin.trim())
+      .filter(Boolean)
+  : null;
+app.use(
+  cors({
+    origin: corsOrigins || true,
+    credentials: true,
+  })
+);
 app.use(express.json({ limit: '2mb' }));
 app.use(express.urlencoded({ extended: true }));
 app.use(morgan('dev'));
@@ -69,6 +81,23 @@ const getDbOrFail = () => {
     throw err;
   }
   return db;
+};
+
+const ensureIndexes = async () => {
+  const db = getDbOrFail();
+  await Promise.all([
+    db.collection('users').createIndex({ email: 1 }, { unique: true, name: 'users_email_unique' }),
+    db.collection('assignments').createIndex({ doctorId: 1 }, { name: 'assignments_doctorId' }),
+    db.collection('assignments').createIndex(
+      { doctorEmail: 1 },
+      { name: 'assignments_doctorEmail' }
+    ),
+    db.collection('submissions').createIndex(
+      { assignmentId: 1 },
+      { name: 'submissions_assignmentId' }
+    ),
+    db.collection('submissions').createIndex({ studentId: 1 }, { name: 'submissions_studentId' }),
+  ]);
 };
 
 const parseObjectId = (id) => {
@@ -2185,6 +2214,8 @@ const start = async () => {
     try {
       await mongoose.connect(mongoUri);
       console.log('MongoDB connected');
+      await ensureIndexes();
+      console.log('MongoDB indexes ensured');
     } catch (err) {
       console.error('MongoDB connection failed:', err.message);
       console.error('Server will continue running without DB connection.');

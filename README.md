@@ -10,6 +10,8 @@ Production-ready REST API for a Flutter app with email/password auth, JWT-based 
 - File uploads for model answers and student submissions
 - Rate limiting, security headers, CORS, logging
 - Request validation with Joi
+- Single Postman collection test flow: `postman_test_collection.json`
+- CI workflow on GitHub Actions (`lint` + Postman smoke run)
 
 ## Setup
 
@@ -41,6 +43,17 @@ npm run dev
 
 The server will start on `PORT` (default `4000`).
 
+### Environment Variables
+
+Core:
+- `PORT` (default `4000`)
+- `MONGO_URI`
+- `JWT_SECRET`
+
+Recommended for production:
+- `CORS_ORIGIN` (comma-separated allowed origins)
+- `TRUST_PROXY` (default `1` for hosted environments)
+
 ## API Overview
 
 Auth routes:
@@ -57,6 +70,25 @@ Authorization: Bearer <jwt_token>
 ### Health
 
 - `GET /health` -> `{ ok: true }`
+
+## Testing
+
+Postman collection:
+- File: `postman_test_collection.json`
+- Run in Postman Collection Runner, or by CLI:
+
+```bash
+npx newman run postman_test_collection.json --reporters cli
+```
+
+Local smoke script:
+
+```bash
+npm run smoke
+```
+
+Production checklist:
+- See [`PRODUCTION_CHECKLIST.md`](./PRODUCTION_CHECKLIST.md)
 
 ### Assignments (doctor only for create + my)
 
