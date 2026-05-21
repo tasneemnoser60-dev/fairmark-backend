@@ -65,6 +65,8 @@ const jwtSecret = process.env.JWT_SECRET;
 const aiDetectionUrl = (process.env.AI_DETECTION_URL || '').trim();
 const allowAiFallback = String(process.env.ALLOW_AI_FALLBACK || 'true').toLowerCase() !== 'false';
 const vlmApiUrl = (process.env.VLM_API_URL || '').replace(/\/+$/, '');
+const gradingApiUrl = (process.env.GRADING_API_URL || '').replace(/\/+$/, '');
+const maxPipelineRetries = Number(process.env.PIPELINE_MAX_RETRIES || 3);
 
 const okUser = (u) => ({
   id: String(u._id),
@@ -176,6 +178,179 @@ const getAssignmentType = (assignment) => assignment?.type || assignment?.kind |
 const getAssignmentStatus = (assignment) =>
   new Date(assignment?.dueDate || 0) >= new Date() ? 'open' : 'closed';
 const isExamAssignment = (assignment) => getAssignmentType(assignment) === 'exam';
+const isPublishedForStudents = (assignment) => Boolean(assignment?.resultsPublished);
+
+const allowedUploadMimeTypes = new Set([
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'application/pdf',
+]);
+
+const validateUploadFileType = (file) => {
+  if (!file) return { ok: false, message: 'Missing upload file' };
+  if (!allowedUploadMimeTypes.has(String(file.mimetype || '').toLowerCase())) {
+    return {
+      ok: false,
+      message: `Unsupported file type '${file.mimetype}'. Allowed: jpeg, png, webp, pdf`,
+    };
+  }
+  return { ok: true };
+};
+
+const runPipelineStepWithRetry = async ({ submissionId, stepName, fn, maxRetries }) => {
+  let lastError = null;
+  for (let attempt = 1; attempt <= maxRetries; attempt += 1) {
+    try {
+      const result = await fn();
+      return { ok: true, result, attempts: attempt };
+    } catch (err) {
+      lastError = err;
+      console.error(
+        `[pipeline] step=${stepName} submission_id=${submissionId} attempt=${attempt} error=${err.message}`
+      );
+    }
+  }
+  return { ok: false, error: lastError, attempts: maxRetries };
+};
+
+const runSubmissionPipeline = async ({ submissionId }) => {
+  const db = getDbOrFail();
+  const _id = parseObjectId(submissionId);
+  if (!_id) return;
+  const submission = await db.collection('submissions').findOne({ _id });
+  if (!submission) return;
+  const assignmentId = getSubmissionAssignmentObjectId(submission);
+  const assignment = assignmentId ? await db.collection('assignments').findOne({ _id: assignmentId }) : null;
+  const retryCap = Number.isFinite(maxPipelineRetries) && maxPipelineRetries > 0 ? maxPipelineRetries : 3;
+
+  await db.collection('submissions').updateOne(
+    { _id },
+    {
+      $set: {
+        pipelineStatus: 'processing',
+        pipelineRetries: 0,
+        pipelineStartedAt: new Date(),
+        pipelineUpdatedAt: new Date(),
+      },
+    }
+  );
+
+  const steps = [];
+
+  const aiDetectionStep = await runPipelineStepWithRetry({
+    submissionId,
+    stepName: 'ai-detection',
+    maxRetries: retryCap,
+    fn: async () => {
+      const text = String(submission.answerText || '').trim();
+      if (!text) return { ai_percentage: 0, decision: 'unknown' };
+      if (!aiDetectionUrl) return { ai_percentage: 0.12, decision: 'human_like', mock: true };
+      const resp = await fetch(aiDetectionUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text }),
+      });
+      if (!resp.ok) throw new Error(`ai-detection failed with ${resp.status}`);
+      const payload = await resp.json();
+      return {
+        ai_percentage:
+          typeof payload.aiScore === 'number'
+            ? Number((payload.aiScore * 100).toFixed(2))
+            : typeof payload.ai_percentage === 'number'
+              ? Number(payload.ai_percentage)
+              : 0,
+        decision: payload.prediction || payload.decision || 'unknown',
+      };
+    },
+  });
+  steps.push({ step: 'ai-detection', ok: aiDetectionStep.ok, attempts: aiDetectionStep.attempts });
+  if (!aiDetectionStep.ok) {
+    await db.collection('submissions').updateOne(
+      { _id },
+      {
+        $set: {
+          pipelineStatus: 'failed',
+          pipelineRetries: aiDetectionStep.attempts,
+          pipelineError: `ai-detection: ${aiDetectionStep.error?.message || 'unknown error'}`,
+          pipelineUpdatedAt: new Date(),
+        },
+      }
+    );
+    return;
+  }
+
+  const gradingStep = await runPipelineStepWithRetry({
+    submissionId,
+    stepName: 'grading',
+    maxRetries: retryCap,
+    fn: async () => {
+      const totalMark = Number(assignment?.totalMark ?? 20);
+      if (!gradingApiUrl) {
+        const base = String(submission.answerText || '').length % Math.max(totalMark, 1);
+        return {
+          grades: [{ question_id: 1, score: base, outOf: totalMark }],
+          total_score: base,
+          feedback: 'Auto-graded (mock)',
+          source: 'local-mock',
+        };
+      }
+      const resp = await fetch(`${gradingApiUrl}/grade`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          assignment,
+          submission,
+        }),
+      });
+      if (!resp.ok) throw new Error(`grading failed with ${resp.status}`);
+      return resp.json();
+    },
+  });
+  steps.push({ step: 'grading', ok: gradingStep.ok, attempts: gradingStep.attempts });
+  if (!gradingStep.ok) {
+    await db.collection('submissions').updateOne(
+      { _id },
+      {
+        $set: {
+          pipelineStatus: 'failed',
+          pipelineRetries: gradingStep.attempts,
+          pipelineError: `grading: ${gradingStep.error?.message || 'unknown error'}`,
+          pipelineUpdatedAt: new Date(),
+        },
+      }
+    );
+    return;
+  }
+
+  const grading = gradingStep.result || {};
+  const normalizedScore =
+    typeof grading.total_score === 'number'
+      ? grading.total_score
+      : typeof grading.score === 'number'
+        ? grading.score
+        : null;
+
+  await db.collection('submissions').updateOne(
+    { _id },
+    {
+      $set: {
+        ai_score: aiDetectionStep.result.ai_percentage,
+        ai_decision: aiDetectionStep.result.decision,
+        score: normalizedScore,
+        status: typeof normalizedScore === 'number' ? 'graded' : submission.status || 'submitted',
+        scoreBreakdown: Array.isArray(grading.grades) ? grading.grades : [],
+        feedback: grading.feedback || '',
+        gradingSource: grading.source || 'pipeline',
+        pipelineStatus: 'completed',
+        pipelineRetries: Math.max(aiDetectionStep.attempts, gradingStep.attempts),
+        pipelineSteps: steps,
+        pipelineCompletedAt: new Date(),
+        pipelineUpdatedAt: new Date(),
+      },
+    }
+  );
+};
 
 const auth = async (req, res, next) => {
   try {
@@ -183,6 +358,12 @@ const auth = async (req, res, next) => {
     const token = h.startsWith('Bearer ') ? h.slice(7) : null;
     if (!token) return res.status(401).json({ message: 'Missing token' });
     const decoded = jwt.verify(token, jwtSecret);
+    const db = getDbOrFail();
+    const userId = parseObjectId(decoded.id);
+    if (!userId) return res.status(401).json({ message: 'Invalid token user' });
+    const user = await db.collection('users').findOne({ _id: userId });
+    if (!user) return res.status(401).json({ message: 'User not found' });
+    if (user.active === false) return res.status(403).json({ message: 'User is deactivated' });
     req.user = decoded;
     return next();
   } catch (_err) {
@@ -556,6 +737,52 @@ const uploadModelAnswerHandler = asyncRoute(async (req, res) => {
   });
 
 app.post(
+  '/assignments/:id/upload',
+  auth,
+  allowRoles('doctor', 'admin'),
+  upload.any(),
+  asyncRoute(async (req, res) => {
+    const db = getDbOrFail();
+    const _id = parseObjectId(req.params.id);
+    if (!_id) return res.status(400).json({ message: 'Invalid assignment id' });
+    const assignment = await db.collection('assignments').findOne({ _id });
+    if (!assignment) return res.status(404).json({ message: 'Assignment not found' });
+    const access = ensureDoctorAssignmentAccess(assignment, req.user);
+    if (!access.ok) return res.status(access.status).json({ message: access.message });
+
+    const uploaded = pickUploadedFile(req.files);
+    const validType = validateUploadFileType(uploaded);
+    if (!validType.ok) return res.status(400).json({ message: validType.message });
+
+    await db.collection('assignments').updateOne(
+      { _id },
+      {
+        $set: {
+          examFile: {
+            originalName: uploaded.originalname,
+            mimeType: uploaded.mimetype,
+            size: uploaded.size,
+            uploadedAt: new Date(),
+          },
+          updatedAt: new Date(),
+        },
+      }
+    );
+
+    return res.json({
+      ok: true,
+      assignment_id: idToString(_id),
+      file_url: null,
+      file: {
+        originalName: uploaded.originalname,
+        mimeType: uploaded.mimetype,
+        size: uploaded.size,
+      },
+    });
+  })
+);
+
+app.post(
   '/assignments/:id/model-answer',
   auth,
   allowRoles('doctor', 'admin'),
@@ -605,6 +832,9 @@ app.post(
     }
     const assignment = await db.collection('assignments').findOne({ _id: assignmentId });
     if (!assignment) return res.status(404).json({ message: 'Assignment not found' });
+    if (new Date(assignment.dueDate) < new Date()) {
+      return res.status(400).json({ message: 'Deadline has passed' });
+    }
 
     const now = new Date();
     const studentObjectId = parseObjectId(req.user.id);
@@ -630,6 +860,15 @@ app.post(
 
     const result = await db.collection('submissions').insertOne(doc);
     doc._id = result.insertedId;
+
+    setImmediate(() => {
+      runSubmissionPipeline({ submissionId: idToString(doc._id) }).catch((err) => {
+        console.error(
+          `[pipeline] submission_id=${idToString(doc._id)} error=${err.message || 'unknown error'}`
+        );
+      });
+    });
+
     return res.status(201).json(doc);
   })
 );
@@ -933,11 +1172,22 @@ app.get(
   allowRoles('student'),
   asyncRoute(async (req, res) => {
     const db = getDbOrFail();
-    const submissions = await db
+    const submissionsRaw = await db
       .collection('submissions')
       .find({ studentId: { $in: userIdAlternatives(req.user.id) }, status: 'graded' })
       .sort({ updatedAt: -1 })
       .toArray();
+    const assignmentIds = submissionsRaw
+      .map((s) => getSubmissionAssignmentObjectId(s))
+      .filter(Boolean);
+    const assignments = assignmentIds.length
+      ? await db.collection('assignments').find({ _id: { $in: assignmentIds } }).toArray()
+      : [];
+    const byAssignmentId = new Map(assignments.map((a) => [idToString(a._id), a]));
+    const submissions = submissionsRaw.filter((s) => {
+      const assignment = byAssignmentId.get(idToString(getSubmissionAssignmentObjectId(s)));
+      return isPublishedForStudents(assignment);
+    });
 
     const total = submissions.length;
     const passed = submissions.filter((s) => typeof s.score === 'number' && s.score >= 50).length;
@@ -977,6 +1227,9 @@ app.get(
       ? submission.assignmentId
       : parseObjectId(submission.assignmentId);
     const assignment = assignmentId ? await db.collection('assignments').findOne({ _id: assignmentId }) : null;
+    if (!isPublishedForStudents(assignment)) {
+      return res.status(403).json({ message: 'Result not published yet' });
+    }
     const totalMark = Number(assignment?.totalMark ?? 100);
     const score = typeof submission.score === 'number' ? submission.score : 0;
     const percent = totalMark > 0 ? (score / totalMark) * 100 : 0;
@@ -1023,6 +1276,9 @@ app.get(
       ? submission.assignmentId
       : parseObjectId(submission.assignmentId);
     const assignment = assignmentId ? await db.collection('assignments').findOne({ _id: assignmentId }) : null;
+    if (!isPublishedForStudents(assignment)) {
+      return res.status(403).json({ message: 'Result not published yet' });
+    }
 
     const questions = Array.isArray(assignment?.questions) && assignment.questions.length
       ? assignment.questions
@@ -1665,6 +1921,81 @@ app.post(
   })
 );
 
+app.patch(
+  '/grades/:assignmentId/publish',
+  auth,
+  allowRoles('doctor', 'admin'),
+  asyncRoute(async (req, res) => {
+    const db = getDbOrFail();
+    const assignmentId = parseObjectId(req.params.assignmentId);
+    if (!assignmentId) return res.status(400).json({ message: 'Invalid assignment id' });
+    const assignment = await db.collection('assignments').findOne({ _id: assignmentId });
+    const access = ensureDoctorAssignmentAccess(assignment, req.user);
+    if (!access.ok) return res.status(access.status).json({ message: access.message });
+
+    await db.collection('assignments').updateOne(
+      { _id: assignmentId },
+      { $set: { resultsPublished: true, resultsPublishedAt: new Date(), updatedAt: new Date() } }
+    );
+
+    return res.json({
+      published: true,
+      student_notified: false,
+      assignmentId: idToString(assignmentId),
+    });
+  })
+);
+
+app.get(
+  '/grades/student',
+  auth,
+  allowRoles('student'),
+  asyncRoute(async (req, res) => {
+    const db = getDbOrFail();
+    const submissionsRaw = await db
+      .collection('submissions')
+      .find({ studentId: { $in: userIdAlternatives(req.user.id) }, status: 'graded' })
+      .sort({ updatedAt: -1 })
+      .toArray();
+    const assignmentIds = submissionsRaw
+      .map((s) => getSubmissionAssignmentObjectId(s))
+      .filter(Boolean);
+    const assignments = assignmentIds.length
+      ? await db.collection('assignments').find({ _id: { $in: assignmentIds } }).toArray()
+      : [];
+    const byAssignmentId = new Map(assignments.map((a) => [idToString(a._id), a]));
+    const visible = submissionsRaw.filter((s) => {
+      const assignment = byAssignmentId.get(idToString(getSubmissionAssignmentObjectId(s)));
+      return isPublishedForStudents(assignment);
+    });
+
+    const grades = visible.map((s) => {
+      const assignment = byAssignmentId.get(idToString(getSubmissionAssignmentObjectId(s)));
+      const totalMark = Number(assignment?.totalMark ?? 100);
+      const score = Number(s.score ?? 0);
+      return {
+        submission_id: idToString(s._id),
+        assignment_id: idToString(getSubmissionAssignmentObjectId(s)),
+        title: assignment?.title || s.assignmentTitle || 'Untitled',
+        score,
+        total_mark: totalMark,
+        percentage: totalMark > 0 ? Number(((score / totalMark) * 100).toFixed(2)) : 0,
+        ai_score: typeof s.ai_score === 'number' ? s.ai_score : null,
+        feedback: s.feedback || '',
+      };
+    });
+    const totalScore = grades.reduce((sum, g) => sum + g.score, 0);
+    const aiScores = grades.map((g) => g.ai_score).filter((v) => typeof v === 'number');
+    const aiScore = aiScores.length ? Number((aiScores.reduce((a, b) => a + b, 0) / aiScores.length).toFixed(2)) : null;
+
+    return res.json({
+      grades,
+      total_score: totalScore,
+      ai_score: aiScore,
+    });
+  })
+);
+
 app.get(
   '/doctor/profile',
   auth,
@@ -1909,6 +2240,14 @@ app.post(
       { $set: { status: 'submitted', updatedAt: new Date() } }
     );
 
+    setImmediate(() => {
+      runSubmissionPipeline({ submissionId: idToString(existingSubmission._id) }).catch((err) => {
+        console.error(
+          `[pipeline] submission_id=${idToString(existingSubmission._id)} error=${err.message || 'unknown error'}`
+        );
+      });
+    });
+
     return res.json({
       ok: true,
       submissionId: idToString(existingSubmission._id),
@@ -1987,6 +2326,78 @@ app.put(
         phone: updated.phone || '',
         courses: Array.isArray(updated.courses) ? updated.courses : [],
       },
+    });
+  })
+);
+
+app.get(
+  '/admin/users',
+  auth,
+  allowRoles('admin'),
+  asyncRoute(async (_req, res) => {
+    const db = getDbOrFail();
+    const users = await db.collection('users').find({}).sort({ createdAt: -1 }).toArray();
+    const items = users.map((u) => ({
+      id: idToString(u._id),
+      name: u.name || '',
+      email: u.email || '',
+      role: u.role || '',
+      department: u.department || '',
+      active: u.active !== false,
+      createdAt: u.createdAt || null,
+    }));
+    return res.json({ users: items, total: items.length });
+  })
+);
+
+app.patch(
+  '/admin/users/:id/status',
+  auth,
+  allowRoles('admin'),
+  asyncRoute(async (req, res) => {
+    const db = getDbOrFail();
+    const _id = parseObjectId(req.params.id);
+    if (!_id) return res.status(400).json({ message: 'Invalid user id' });
+    const active = Boolean(req.body.active);
+    const result = await db.collection('users').findOneAndUpdate(
+      { _id },
+      { $set: { active, updatedAt: new Date() } },
+      { returnDocument: 'after' }
+    );
+    const user = unwrapFindOneAndUpdateResult(result);
+    if (!user) return res.status(404).json({ message: 'User not found' });
+    return res.json({
+      updated: true,
+      user: {
+        id: idToString(user._id),
+        active: user.active !== false,
+      },
+    });
+  })
+);
+
+app.get(
+  '/admin/analytics',
+  auth,
+  allowRoles('admin'),
+  asyncRoute(async (_req, res) => {
+    const db = getDbOrFail();
+    const [assignments, submissions, users] = await Promise.all([
+      db.collection('assignments').find({}).toArray(),
+      db.collection('submissions').find({}).toArray(),
+      db.collection('users').find({}).toArray(),
+    ]);
+    const totalExams = assignments.filter((a) => isExamAssignment(a)).length;
+    const graded = submissions.filter((s) => typeof s.score === 'number');
+    const avgScore = graded.length
+      ? Number((graded.reduce((sum, s) => sum + Number(s.score || 0), 0) / graded.length).toFixed(2))
+      : 0;
+    return res.json({
+      totalExams,
+      avgScore,
+      totalAssignments: assignments.length,
+      totalSubmissions: submissions.length,
+      totalUsers: users.length,
     });
   })
 );
