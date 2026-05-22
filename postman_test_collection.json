@@ -56,990 +56,1020 @@
   ],
   "item": [
     {
-      "name": "00 - Init Dynamic Emails",
-      "request": {
-        "method": "GET",
-        "url": "{{baseUrl}}/health"
-      },
-      "event": [
+      "name": "00 - Setup & Auth",
+      "item": [
         {
-          "listen": "prerequest",
-          "script": {
-            "type": "text/javascript",
-            "exec": [
-              "const ts = Date.now();",
-              "pm.collectionVariables.set('studentEmail', `student.${ts}@example.com`);",
-              "pm.collectionVariables.set('doctorEmail', `doctor.${ts}@example.com`);",
-              "pm.collectionVariables.set('adminEmail', `admin.${ts}@example.com`);"
-            ]
-          }
-        },
-        {
-          "listen": "test",
-          "script": {
-            "type": "text/javascript",
-            "exec": [
-              "pm.test('Health is up', function () {",
-              "  pm.expect(pm.response.code).to.eql(200);",
-              "});"
-            ]
-          }
-        }
-      ]
-    },
-    {
-      "name": "01 - Register Student",
-      "request": {
-        "method": "POST",
-        "header": [
-          {
-            "key": "Content-Type",
-            "value": "application/json"
-          }
-        ],
-        "body": {
-          "mode": "raw",
-          "raw": "{\n  \"name\": \"Student\",\n  \"email\": \"{{studentEmail}}\",\n  \"password\": \"{{password}}\",\n  \"role\": \"student\"\n}"
-        },
-        "url": "{{baseUrl}}/api/auth/register"
-      },
-      "event": [
-        {
-          "listen": "test",
-          "script": {
-            "type": "text/javascript",
-            "exec": [
-              "pm.test('Register student success', function () {",
-              "  pm.expect([200, 201]).to.include(pm.response.code);",
-              "});",
-              "const json = pm.response.json();",
-              "if (json && json.token) pm.collectionVariables.set('studentToken', json.token);"
-            ]
-          }
-        }
-      ]
-    },
-    {
-      "name": "02 - Register Doctor",
-      "request": {
-        "method": "POST",
-        "header": [
-          {
-            "key": "Content-Type",
-            "value": "application/json"
-          }
-        ],
-        "body": {
-          "mode": "raw",
-          "raw": "{\n  \"name\": \"Doctor\",\n  \"email\": \"{{doctorEmail}}\",\n  \"password\": \"{{password}}\",\n  \"role\": \"doctor\"\n}"
-        },
-        "url": "{{baseUrl}}/api/auth/register"
-      },
-      "event": [
-        {
-          "listen": "test",
-          "script": {
-            "type": "text/javascript",
-            "exec": [
-              "pm.test('Register doctor success', function () {",
-              "  pm.expect([200, 201]).to.include(pm.response.code);",
-              "});",
-              "const json = pm.response.json();",
-              "if (json && json.token) pm.collectionVariables.set('doctorToken', json.token);",
-              "if (json && json.user && json.user.id) pm.collectionVariables.set('doctorId', json.user.id);"
-            ]
-          }
-        }
-      ]
-    },
-    {
-      "name": "03 - Register Admin",
-      "request": {
-        "method": "POST",
-        "header": [
-          {
-            "key": "Content-Type",
-            "value": "application/json"
-          }
-        ],
-        "body": {
-          "mode": "raw",
-          "raw": "{\n  \"name\": \"Admin\",\n  \"email\": \"{{adminEmail}}\",\n  \"password\": \"{{password}}\",\n  \"role\": \"admin\"\n}"
-        },
-        "url": "{{baseUrl}}/api/auth/register"
-      },
-      "event": [
-        {
-          "listen": "test",
-          "script": {
-            "type": "text/javascript",
-            "exec": [
-              "pm.test('Register admin handled', function () {",
-              "  pm.expect([200, 201]).to.include(pm.response.code);",
-              "});",
-              "const json = pm.response.json();",
-              "if (json && json.token) pm.collectionVariables.set('adminToken', json.token);"
-            ]
-          }
-        }
-      ]
-    },
-    {
-      "name": "04 - Create Assignment (Doctor)",
-      "request": {
-        "method": "POST",
-        "header": [
-          {
-            "key": "Authorization",
-            "value": "Bearer {{doctorToken}}"
+          "name": "00 - Init Dynamic Emails",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/health"
           },
-          {
-            "key": "Content-Type",
-            "value": "application/json"
-          }
-        ],
-        "body": {
-          "mode": "raw",
-          "raw": "{\n  \"title\": \"Quiz Smoke\",\n  \"description\": \"Smoke assignment\",\n  \"assignmentText\": \"Answer all questions\",\n  \"totalMark\": 20,\n  \"dueDate\": \"2026-12-01T12:00:00.000Z\"\n}"
-        },
-        "url": "{{baseUrl}}/assignments"
-      },
-      "event": [
-        {
-          "listen": "test",
-          "script": {
-            "type": "text/javascript",
-            "exec": [
-              "pm.test('Create assignment success', function () {",
-              "  pm.expect([200, 201]).to.include(pm.response.code);",
-              "});",
-              "const json = pm.response.json();",
-              "if (json && json._id) pm.collectionVariables.set('assignmentId', json._id);"
-            ]
-          }
-        }
-      ]
-    },
-    {
-      "name": "05 - List Assignments",
-      "request": {
-        "method": "GET",
-        "header": [
-          {
-            "key": "Authorization",
-            "value": "Bearer {{doctorToken}}"
-          }
-        ],
-        "url": "{{baseUrl}}/assignments"
-      },
-      "event": [
-        {
-          "listen": "test",
-          "script": {
-            "type": "text/javascript",
-            "exec": [
-              "pm.test('List assignments success', function () {",
-              "  pm.expect(pm.response.code).to.eql(200);",
-              "});"
-            ]
-          }
-        }
-      ]
-    },
-    {
-      "name": "06 - Create Submission (Student)",
-      "request": {
-        "method": "POST",
-        "header": [
-          {
-            "key": "Authorization",
-            "value": "Bearer {{studentToken}}"
-          }
-        ],
-        "body": {
-          "mode": "formdata",
-          "formdata": [
+          "event": [
             {
-              "key": "assignmentId",
-              "value": "{{assignmentId}}",
-              "type": "text"
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const ts = Date.now();",
+                  "pm.collectionVariables.set('studentEmail', `student.${ts}@example.com`);",
+                  "pm.collectionVariables.set('doctorEmail', `doctor.${ts}@example.com`);",
+                  "pm.collectionVariables.set('adminEmail', `admin.${ts}@example.com`);"
+                ]
+              }
             },
             {
-              "key": "answerText",
-              "value": "This is my answer",
-              "type": "text"
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Health is up', function () {",
+                  "  pm.expect(pm.response.code).to.eql(200);",
+                  "});"
+                ]
+              }
             }
           ]
         },
-        "url": "{{baseUrl}}/submissions"
-      },
-      "event": [
         {
-          "listen": "test",
-          "script": {
-            "type": "text/javascript",
-            "exec": [
-              "pm.test('Create submission success', function () {",
-              "  pm.expect([200, 201]).to.include(pm.response.code);",
-              "});",
-              "const json = pm.response.json();",
-              "if (json && json._id) pm.collectionVariables.set('submissionId', json._id);"
-            ]
-          }
-        }
-      ]
-    },
-    {
-      "name": "07 - Grade Submission (Doctor)",
-      "request": {
-        "method": "PUT",
-        "header": [
-          {
-            "key": "Authorization",
-            "value": "Bearer {{doctorToken}}"
+          "name": "01 - Register Student",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Student\",\n  \"email\": \"{{studentEmail}}\",\n  \"password\": \"{{password}}\",\n  \"role\": \"student\"\n}"
+            },
+            "url": "{{baseUrl}}/api/auth/register"
           },
-          {
-            "key": "Content-Type",
-            "value": "application/json"
-          }
-        ],
-        "body": {
-          "mode": "raw",
-          "raw": "{\n  \"score\": 18\n}"
-        },
-        "url": "{{baseUrl}}/submissions/{{submissionId}}/grade"
-      },
-      "event": [
-        {
-          "listen": "test",
-          "script": {
-            "type": "text/javascript",
-            "exec": [
-              "pm.test('Grade submission success', function () {",
-              "  pm.expect(pm.response.code).to.eql(200);",
-              "});"
-            ]
-          }
-        }
-      ]
-    },
-    {
-      "name": "08 - AI Detection",
-      "request": {
-        "method": "POST",
-        "header": [
-          {
-            "key": "Authorization",
-            "value": "Bearer {{studentToken}}"
-          },
-          {
-            "key": "Content-Type",
-            "value": "application/json"
-          }
-        ],
-        "body": {
-          "mode": "raw",
-          "raw": "{\n  \"text\": \"This is a sample answer for detector check\"\n}"
-        },
-        "url": "{{baseUrl}}/ai-detection"
-      },
-      "event": [
-        {
-          "listen": "test",
-          "script": {
-            "type": "text/javascript",
-            "exec": [
-              "pm.test('AI detection reachable', function () {",
-              "  pm.expect([200, 502]).to.include(pm.response.code);",
-              "});"
-            ]
-          }
-        }
-      ]
-    },
-    {
-      "name": "09 - Upload Assignment Model Answer (Manual File)",
-      "request": {
-        "method": "POST",
-        "header": [
-          {
-            "key": "Authorization",
-            "value": "Bearer {{doctorToken}}"
-          }
-        ],
-        "body": {
-          "mode": "formdata",
-          "formdata": [
+          "event": [
             {
-              "key": "file",
-              "type": "file",
-              "src": ""
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Register student success', function () {",
+                  "  pm.expect([200, 201]).to.include(pm.response.code);",
+                  "});",
+                  "const json = pm.response.json();",
+                  "if (json && json.token) pm.collectionVariables.set('studentToken', json.token);"
+                ]
+              }
             }
           ]
         },
-        "url": "{{baseUrl}}/assignments/{{assignmentId}}/model-answer"
-      },
-      "event": [
         {
-          "listen": "test",
-          "script": {
-            "type": "text/javascript",
-            "exec": [
-              "pm.test('Upload model answer returns 200/400', function () {",
-              "  pm.expect([200, 400]).to.include(pm.response.code);",
-              "});"
-            ]
-          }
-        }
-      ]
-    },
-    {
-      "name": "10 - Student Dashboard",
-      "request": {
-        "method": "GET",
-        "header": [
-          {
-            "key": "Authorization",
-            "value": "Bearer {{studentToken}}"
-          }
-        ],
-        "url": "{{baseUrl}}/student/dashboard"
-      },
-      "event": [
-        {
-          "listen": "test",
-          "script": {
-            "type": "text/javascript",
-            "exec": [
-              "pm.test('Student dashboard success', function () { pm.expect(pm.response.code).to.eql(200); });"
-            ]
-          }
-        }
-      ]
-    },
-    {
-      "name": "11 - Student Assignments",
-      "request": {
-        "method": "GET",
-        "header": [
-          {
-            "key": "Authorization",
-            "value": "Bearer {{studentToken}}"
-          }
-        ],
-        "url": "{{baseUrl}}/student/assignments"
-      },
-      "event": [
-        {
-          "listen": "test",
-          "script": {
-            "type": "text/javascript",
-            "exec": [
-              "pm.test('Student assignments success', function () { pm.expect(pm.response.code).to.eql(200); });"
-            ]
-          }
-        }
-      ]
-    },
-    {
-      "name": "12 - Student Exams",
-      "request": {
-        "method": "GET",
-        "header": [
-          {
-            "key": "Authorization",
-            "value": "Bearer {{studentToken}}"
-          }
-        ],
-        "url": "{{baseUrl}}/student/exams"
-      },
-      "event": [
-        {
-          "listen": "test",
-          "script": {
-            "type": "text/javascript",
-            "exec": [
-              "pm.test('Student exams success', function () { pm.expect(pm.response.code).to.eql(200); });"
-            ]
-          }
-        }
-      ]
-    },
-    {
-      "name": "13 - Student Results Summary",
-      "request": {
-        "method": "GET",
-        "header": [
-          {
-            "key": "Authorization",
-            "value": "Bearer {{studentToken}}"
-          }
-        ],
-        "url": "{{baseUrl}}/student/results/summary"
-      },
-      "event": [
-        {
-          "listen": "test",
-          "script": {
-            "type": "text/javascript",
-            "exec": [
-              "pm.test('Student results summary success', function () { pm.expect(pm.response.code).to.eql(200); });"
-            ]
-          }
-        }
-      ]
-    },
-    {
-      "name": "14 - Doctor Dashboard",
-      "request": {
-        "method": "GET",
-        "header": [
-          {
-            "key": "Authorization",
-            "value": "Bearer {{doctorToken}}"
-          }
-        ],
-        "url": "{{baseUrl}}/doctor/dashboard"
-      },
-      "event": [
-        {
-          "listen": "test",
-          "script": {
-            "type": "text/javascript",
-            "exec": [
-              "pm.test('Doctor dashboard success', function () { pm.expect(pm.response.code).to.eql(200); });"
-            ]
-          }
-        }
-      ]
-    },
-    {
-      "name": "15 - Doctor Assignments",
-      "request": {
-        "method": "GET",
-        "header": [
-          {
-            "key": "Authorization",
-            "value": "Bearer {{doctorToken}}"
-          }
-        ],
-        "url": "{{baseUrl}}/doctor/assignments"
-      },
-      "event": [
-        {
-          "listen": "test",
-          "script": {
-            "type": "text/javascript",
-            "exec": [
-              "pm.test('Doctor assignments success', function () { pm.expect(pm.response.code).to.eql(200); });"
-            ]
-          }
-        }
-      ]
-    },
-    {
-      "name": "16 - Doctor Assignment Submissions",
-      "request": {
-        "method": "GET",
-        "header": [
-          {
-            "key": "Authorization",
-            "value": "Bearer {{doctorToken}}"
-          }
-        ],
-        "url": "{{baseUrl}}/doctor/assignments/{{assignmentId}}/submissions"
-      },
-      "event": [
-        {
-          "listen": "test",
-          "script": {
-            "type": "text/javascript",
-            "exec": [
-              "pm.test('Doctor assignment submissions success', function () { pm.expect(pm.response.code).to.eql(200); });"
-            ]
-          }
-        }
-      ]
-    },
-    {
-      "name": "17 - Doctor Results Ranking",
-      "request": {
-        "method": "GET",
-        "header": [
-          {
-            "key": "Authorization",
-            "value": "Bearer {{doctorToken}}"
-          }
-        ],
-        "url": "{{baseUrl}}/doctor/results/ranking"
-      },
-      "event": [
-        {
-          "listen": "test",
-          "script": {
-            "type": "text/javascript",
-            "exec": [
-              "pm.test('Doctor results ranking success', function () { pm.expect(pm.response.code).to.eql(200); });"
-            ]
-          }
-        }
-      ]
-    },
-    {
-      "name": "18 - Doctor Results Details",
-      "request": {
-        "method": "GET",
-        "header": [
-          {
-            "key": "Authorization",
-            "value": "Bearer {{doctorToken}}"
-          }
-        ],
-        "url": "{{baseUrl}}/doctor/results/{{assignmentId}}/details?sortBy=score"
-      },
-      "event": [
-        {
-          "listen": "test",
-          "script": {
-            "type": "text/javascript",
-            "exec": [
-              "pm.test('Doctor results details success', function () { pm.expect(pm.response.code).to.eql(200); });"
-            ]
-          }
-        }
-      ]
-    },
-    {
-      "name": "19 - Doctor Profile",
-      "request": {
-        "method": "GET",
-        "header": [
-          {
-            "key": "Authorization",
-            "value": "Bearer {{doctorToken}}"
-          }
-        ],
-        "url": "{{baseUrl}}/doctor/profile"
-      },
-      "event": [
-        {
-          "listen": "test",
-          "script": {
-            "type": "text/javascript",
-            "exec": [
-              "pm.test('Doctor profile success', function () { pm.expect(pm.response.code).to.eql(200); });"
-            ]
-          }
-        }
-      ]
-    },
-    {
-      "name": "20 - Create Exam (Doctor)",
-      "request": {
-        "method": "POST",
-        "header": [
-          {
-            "key": "Authorization",
-            "value": "Bearer {{doctorToken}}"
+          "name": "02 - Register Doctor",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Doctor\",\n  \"email\": \"{{doctorEmail}}\",\n  \"password\": \"{{password}}\",\n  \"role\": \"doctor\"\n}"
+            },
+            "url": "{{baseUrl}}/api/auth/register"
           },
-          {
-            "key": "Content-Type",
-            "value": "application/json"
-          }
-        ],
-        "body": {
-          "mode": "raw",
-          "raw": "{\n  \"title\": \"Exam {{now}}\",\n  \"description\": \"Auto created exam for test flow\",\n  \"totalMark\": 30,\n  \"dueDate\": \"2026-12-31T12:00:00.000Z\"\n}"
-        },
-        "url": "{{baseUrl}}/exams"
-      },
-      "event": [
-        {
-          "listen": "test",
-          "script": {
-            "type": "text/javascript",
-            "exec": [
-              "pm.test('Create exam success', function () { pm.expect(pm.response.code).to.be.oneOf([200, 201]); });",
-              "const json = pm.response.json();",
-              "const id = json?._id || json?.assignmentId || '';",
-              "pm.test('Exam id captured', function () { pm.expect(id).to.be.a('string').and.not.empty; });",
-              "pm.collectionVariables.set('examId', id);"
-            ]
-          }
-        }
-      ]
-    },
-    {
-      "name": "20 - Doctor Exams",
-      "request": {
-        "method": "GET",
-        "header": [
-          {
-            "key": "Authorization",
-            "value": "Bearer {{doctorToken}}"
-          }
-        ],
-        "url": "{{baseUrl}}/doctor/exams"
-      },
-      "event": [
-        {
-          "listen": "test",
-          "script": {
-            "type": "text/javascript",
-            "exec": [
-              "pm.test('Doctor exams success', function () { pm.expect(pm.response.code).to.eql(200); });",
-              "const json = pm.response.json();",
-              "const first = Array.isArray(json?.items) ? json.items[0] : null;",
-              "const id = first?.examId || first?.assignmentId || pm.collectionVariables.get('examId') || '';",
-              "if (id) pm.collectionVariables.set('examId', id);",
-              "pm.test('Exam id exists for next requests', function () { pm.expect(pm.collectionVariables.get('examId')).to.be.a('string').and.not.empty; });"
-            ]
-          }
-        }
-      ]
-    },
-    {
-      "name": "21 - Doctor Exam Submissions",
-      "request": {
-        "method": "GET",
-        "header": [
-          {
-            "key": "Authorization",
-            "value": "Bearer {{doctorToken}}"
-          }
-        ],
-        "url": "{{baseUrl}}/doctor/exams/{{examId}}/submissions"
-      },
-      "event": [
-        {
-          "listen": "test",
-          "script": {
-            "type": "text/javascript",
-            "exec": [
-              "pm.test('Doctor exam submissions success', function () { pm.expect(pm.response.code).to.eql(200); });"
-            ]
-          }
-        }
-      ]
-    },
-    {
-      "name": "22 - Doctor Exam Results",
-      "request": {
-        "method": "GET",
-        "header": [
-          {
-            "key": "Authorization",
-            "value": "Bearer {{doctorToken}}"
-          }
-        ],
-        "url": "{{baseUrl}}/doctor/exams/{{examId}}/results"
-      },
-      "event": [
-        {
-          "listen": "test",
-          "script": {
-            "type": "text/javascript",
-            "exec": [
-              "pm.test('Doctor exam results success', function () { pm.expect(pm.response.code).to.eql(200); });"
-            ]
-          }
-        }
-      ]
-    },
-    {
-      "name": "23 - Update Doctor Profile",
-      "request": {
-        "method": "PUT",
-        "header": [
-          {
-            "key": "Authorization",
-            "value": "Bearer {{doctorToken}}"
-          },
-          {
-            "key": "Content-Type",
-            "value": "application/json"
-          }
-        ],
-        "body": {
-          "mode": "raw",
-          "raw": "{\n  \"department\": \"CS\",\n  \"courses\": [\"AI\", \"Networks\"]\n}"
-        },
-        "url": "{{baseUrl}}/doctor/profile"
-      },
-      "event": [
-        {
-          "listen": "test",
-          "script": {
-            "type": "text/javascript",
-            "exec": [
-              "pm.test('Update doctor profile success', function () {",
-              "  pm.expect(pm.response.code).to.eql(200);",
-              "});",
-              "const json = pm.response.json();",
-              "pm.test('Updated profile shape', function () {",
-              "  pm.expect(json).to.have.property('doctor');",
-              "  pm.expect(json.doctor).to.have.property('department');",
-              "  pm.expect(json.doctor).to.have.property('courses');",
-              "});"
-            ]
-          }
-        }
-      ]
-    },
-    {
-      "name": "24 - Admin Update Doctor Profile",
-      "request": {
-        "method": "PUT",
-        "header": [
-          {
-            "key": "Authorization",
-            "value": "Bearer {{adminToken}}"
-          },
-          {
-            "key": "Content-Type",
-            "value": "application/json"
-          }
-        ],
-        "body": {
-          "mode": "raw",
-          "raw": "{\n  \"department\": \"Engineering\",\n  \"courses\": [\"AI\", \"Cloud\", \"Networks\"],\n  \"phone\": \"+201000000000\",\n  \"role\": \"doctor\"\n}"
-        },
-        "url": "{{baseUrl}}/admin/users/{{doctorId}}/profile"
-      },
-      "event": [
-        {
-          "listen": "test",
-          "script": {
-            "type": "text/javascript",
-            "exec": [
-              "pm.test('Admin updates doctor profile', function () {",
-              "  pm.expect(pm.response.code).to.eql(200);",
-              "});",
-              "const json = pm.response.json();",
-              "pm.test('Updated user payload', function () {",
-              "  pm.expect(json).to.have.property('user');",
-              "  pm.expect(json.user.role).to.eql('doctor');",
-              "});"
-            ]
-          }
-        }
-      ]
-    },
-    {
-      "name": "25 - Publish Assignment Results",
-      "request": {
-        "method": "PATCH",
-        "header": [
-          {
-            "key": "Authorization",
-            "value": "Bearer {{doctorToken}}"
-          }
-        ],
-        "url": "{{baseUrl}}/grades/{{assignmentId}}/publish"
-      },
-      "event": [
-        {
-          "listen": "test",
-          "script": {
-            "type": "text/javascript",
-            "exec": [
-              "pm.test('Publish assignment results success', function () { pm.expect(pm.response.code).to.eql(200); });",
-              "const json = pm.response.json();",
-              "pm.test('Publish payload shape', function () {",
-              "  pm.expect(json).to.have.property('published');",
-              "  pm.expect(json.published).to.eql(true);",
-              "});"
-            ]
-          }
-        }
-      ]
-    },
-    {
-      "name": "26 - Student Grades",
-      "request": {
-        "method": "GET",
-        "header": [
-          {
-            "key": "Authorization",
-            "value": "Bearer {{studentToken}}"
-          }
-        ],
-        "url": "{{baseUrl}}/grades/student"
-      },
-      "event": [
-        {
-          "listen": "test",
-          "script": {
-            "type": "text/javascript",
-            "exec": [
-              "pm.test('Student grades success', function () { pm.expect(pm.response.code).to.eql(200); });",
-              "const json = pm.response.json();",
-              "pm.test('Student grades payload shape', function () {",
-              "  pm.expect(json).to.have.property('grades');",
-              "  pm.expect(json).to.have.property('total_score');",
-              "});"
-            ]
-          }
-        }
-      ]
-    },
-    {
-      "name": "27 - Admin List Users",
-      "request": {
-        "method": "GET",
-        "header": [
-          {
-            "key": "Authorization",
-            "value": "Bearer {{adminToken}}"
-          }
-        ],
-        "url": "{{baseUrl}}/admin/users"
-      },
-      "event": [
-        {
-          "listen": "test",
-          "script": {
-            "type": "text/javascript",
-            "exec": [
-              "pm.test('Admin list users success', function () { pm.expect(pm.response.code).to.eql(200); });",
-              "const json = pm.response.json();",
-              "pm.test('Admin users payload shape', function () {",
-              "  pm.expect(json).to.have.property('users');",
-              "  pm.expect(json).to.have.property('total');",
-              "});"
-            ]
-          }
-        }
-      ]
-    },
-    {
-      "name": "28 - Admin Deactivate Doctor",
-      "request": {
-        "method": "PATCH",
-        "header": [
-          {
-            "key": "Authorization",
-            "value": "Bearer {{adminToken}}"
-          },
-          {
-            "key": "Content-Type",
-            "value": "application/json"
-          }
-        ],
-        "body": {
-          "mode": "raw",
-          "raw": "{\n  \"active\": false\n}"
-        },
-        "url": "{{baseUrl}}/admin/users/{{doctorId}}/status"
-      },
-      "event": [
-        {
-          "listen": "test",
-          "script": {
-            "type": "text/javascript",
-            "exec": [
-              "pm.test('Admin deactivates doctor success', function () { pm.expect(pm.response.code).to.eql(200); });",
-              "const json = pm.response.json();",
-              "pm.test('Doctor deactivated', function () { pm.expect(json.user.active).to.eql(false); });"
-            ]
-          }
-        }
-      ]
-    },
-    {
-      "name": "29 - Admin Reactivate Doctor",
-      "request": {
-        "method": "PATCH",
-        "header": [
-          {
-            "key": "Authorization",
-            "value": "Bearer {{adminToken}}"
-          },
-          {
-            "key": "Content-Type",
-            "value": "application/json"
-          }
-        ],
-        "body": {
-          "mode": "raw",
-          "raw": "{\n  \"active\": true\n}"
-        },
-        "url": "{{baseUrl}}/admin/users/{{doctorId}}/status"
-      },
-      "event": [
-        {
-          "listen": "test",
-          "script": {
-            "type": "text/javascript",
-            "exec": [
-              "pm.test('Admin reactivates doctor success', function () { pm.expect(pm.response.code).to.eql(200); });",
-              "const json = pm.response.json();",
-              "pm.test('Doctor reactivated', function () { pm.expect(json.user.active).to.eql(true); });"
-            ]
-          }
-        }
-      ]
-    },
-    {
-      "name": "30 - Admin Analytics",
-      "request": {
-        "method": "GET",
-        "header": [
-          {
-            "key": "Authorization",
-            "value": "Bearer {{adminToken}}"
-          }
-        ],
-        "url": "{{baseUrl}}/admin/analytics"
-      },
-      "event": [
-        {
-          "listen": "test",
-          "script": {
-            "type": "text/javascript",
-            "exec": [
-              "pm.test('Admin analytics success', function () { pm.expect(pm.response.code).to.eql(200); });",
-              "const json = pm.response.json();",
-              "pm.test('Analytics payload shape', function () {",
-              "  pm.expect(json).to.have.property('totalExams');",
-              "  pm.expect(json).to.have.property('avgScore');",
-              "});"
-            ]
-          }
-        }
-      ]
-    },
-    {
-      "name": "31 - Upload Assignment File Validation",
-      "request": {
-        "method": "POST",
-        "header": [
-          {
-            "key": "Authorization",
-            "value": "Bearer {{doctorToken}}"
-          }
-        ],
-        "body": {
-          "mode": "formdata",
-          "formdata": [
+          "event": [
             {
-              "key": "file",
-              "type": "file",
-              "src": ""
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Register doctor success', function () {",
+                  "  pm.expect([200, 201]).to.include(pm.response.code);",
+                  "});",
+                  "const json = pm.response.json();",
+                  "if (json && json.token) pm.collectionVariables.set('doctorToken', json.token);",
+                  "if (json && json.user && json.user.id) pm.collectionVariables.set('doctorId', json.user.id);"
+                ]
+              }
             }
           ]
         },
-        "url": "{{baseUrl}}/assignments/{{assignmentId}}/upload"
-      },
-      "event": [
         {
-          "listen": "test",
-          "script": {
-            "type": "text/javascript",
-            "exec": [
-              "pm.test('Upload assignment file validation returns 200/400', function () { pm.expect([200,400]).to.include(pm.response.code); });"
-            ]
-          }
+          "name": "03 - Register Admin",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Admin\",\n  \"email\": \"{{adminEmail}}\",\n  \"password\": \"{{password}}\",\n  \"role\": \"admin\"\n}"
+            },
+            "url": "{{baseUrl}}/api/auth/register"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Register admin handled', function () {",
+                  "  pm.expect([200, 201]).to.include(pm.response.code);",
+                  "});",
+                  "const json = pm.response.json();",
+                  "if (json && json.token) pm.collectionVariables.set('adminToken', json.token);"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "01 - Doctor Assignment Flow",
+      "item": [
+        {
+          "name": "04 - Create Assignment (Doctor)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{doctorToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Quiz Smoke\",\n  \"description\": \"Smoke assignment\",\n  \"assignmentText\": \"Answer all questions\",\n  \"totalMark\": 20,\n  \"dueDate\": \"2026-12-01T12:00:00.000Z\"\n}"
+            },
+            "url": "{{baseUrl}}/assignments"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Create assignment success', function () {",
+                  "  pm.expect([200, 201]).to.include(pm.response.code);",
+                  "});",
+                  "const json = pm.response.json();",
+                  "if (json && json._id) pm.collectionVariables.set('assignmentId', json._id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "05 - List Assignments",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{doctorToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/assignments"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('List assignments success', function () {",
+                  "  pm.expect(pm.response.code).to.eql(200);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "09 - Upload Assignment Model Answer (Manual File)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{doctorToken}}"
+              }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": ""
+                }
+              ]
+            },
+            "url": "{{baseUrl}}/assignments/{{assignmentId}}/model-answer"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Upload model answer returns 200/400', function () {",
+                  "  pm.expect([200, 400]).to.include(pm.response.code);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "14 - Doctor Dashboard",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{doctorToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/doctor/dashboard"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Doctor dashboard success', function () { pm.expect(pm.response.code).to.eql(200); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "15 - Doctor Assignments",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{doctorToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/doctor/assignments"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Doctor assignments success', function () { pm.expect(pm.response.code).to.eql(200); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "16 - Doctor Assignment Submissions",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{doctorToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/doctor/assignments/{{assignmentId}}/submissions"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Doctor assignment submissions success', function () { pm.expect(pm.response.code).to.eql(200); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "17 - Doctor Results Ranking",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{doctorToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/doctor/results/ranking"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Doctor results ranking success', function () { pm.expect(pm.response.code).to.eql(200); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "18 - Doctor Results Details",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{doctorToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/doctor/results/{{assignmentId}}/details?sortBy=score"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Doctor results details success', function () { pm.expect(pm.response.code).to.eql(200); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "19 - Doctor Profile",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{doctorToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/doctor/profile"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Doctor profile success', function () { pm.expect(pm.response.code).to.eql(200); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "23 - Update Doctor Profile",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{doctorToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"department\": \"CS\",\n  \"courses\": [\"AI\", \"Networks\"]\n}"
+            },
+            "url": "{{baseUrl}}/doctor/profile"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Update doctor profile success', function () {",
+                  "  pm.expect(pm.response.code).to.eql(200);",
+                  "});",
+                  "const json = pm.response.json();",
+                  "pm.test('Updated profile shape', function () {",
+                  "  pm.expect(json).to.have.property('doctor');",
+                  "  pm.expect(json.doctor).to.have.property('department');",
+                  "  pm.expect(json.doctor).to.have.property('courses');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "25 - Publish Assignment Results",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{doctorToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/grades/{{assignmentId}}/publish"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Publish assignment results success', function () { pm.expect(pm.response.code).to.eql(200); });",
+                  "const json = pm.response.json();",
+                  "pm.test('Publish payload shape', function () {",
+                  "  pm.expect(json).to.have.property('published');",
+                  "  pm.expect(json.published).to.eql(true);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "31 - Upload Assignment File Validation",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{doctorToken}}"
+              }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": ""
+                }
+              ]
+            },
+            "url": "{{baseUrl}}/assignments/{{assignmentId}}/upload"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Upload assignment file validation returns 200/400', function () { pm.expect([200,400]).to.include(pm.response.code); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "02 - Student Flow",
+      "item": [
+        {
+          "name": "06 - Create Submission (Student)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{studentToken}}"
+              }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "assignmentId",
+                  "value": "{{assignmentId}}",
+                  "type": "text"
+                },
+                {
+                  "key": "answerText",
+                  "value": "This is my answer",
+                  "type": "text"
+                }
+              ]
+            },
+            "url": "{{baseUrl}}/submissions"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Create submission success', function () {",
+                  "  pm.expect([200, 201]).to.include(pm.response.code);",
+                  "});",
+                  "const json = pm.response.json();",
+                  "if (json && json._id) pm.collectionVariables.set('submissionId', json._id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "07 - Grade Submission (Doctor)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{doctorToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"score\": 18\n}"
+            },
+            "url": "{{baseUrl}}/submissions/{{submissionId}}/grade"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Grade submission success', function () {",
+                  "  pm.expect(pm.response.code).to.eql(200);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "10 - Student Dashboard",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{studentToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/student/dashboard"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Student dashboard success', function () { pm.expect(pm.response.code).to.eql(200); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "11 - Student Assignments",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{studentToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/student/assignments"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Student assignments success', function () { pm.expect(pm.response.code).to.eql(200); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "12 - Student Exams",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{studentToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/student/exams"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Student exams success', function () { pm.expect(pm.response.code).to.eql(200); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "13 - Student Results Summary",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{studentToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/student/results/summary"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Student results summary success', function () { pm.expect(pm.response.code).to.eql(200); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "26 - Student Grades",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{studentToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/grades/student"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Student grades success', function () { pm.expect(pm.response.code).to.eql(200); });",
+                  "const json = pm.response.json();",
+                  "pm.test('Student grades payload shape', function () {",
+                  "  pm.expect(json).to.have.property('grades');",
+                  "  pm.expect(json).to.have.property('total_score');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "03 - Exam Flow",
+      "item": [
+        {
+          "name": "20 - Create Exam (Doctor)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{doctorToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Exam {{now}}\",\n  \"description\": \"Auto created exam for test flow\",\n  \"totalMark\": 30,\n  \"dueDate\": \"2026-12-31T12:00:00.000Z\"\n}"
+            },
+            "url": "{{baseUrl}}/exams"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Create exam success', function () { pm.expect(pm.response.code).to.be.oneOf([200, 201]); });",
+                  "const json = pm.response.json();",
+                  "const id = json?._id || json?.assignmentId || '';",
+                  "pm.test('Exam id captured', function () { pm.expect(id).to.be.a('string').and.not.empty; });",
+                  "pm.collectionVariables.set('examId', id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "20 - Doctor Exams",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{doctorToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/doctor/exams"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Doctor exams success', function () { pm.expect(pm.response.code).to.eql(200); });",
+                  "const json = pm.response.json();",
+                  "const first = Array.isArray(json?.items) ? json.items[0] : null;",
+                  "const id = first?.examId || first?.assignmentId || pm.collectionVariables.get('examId') || '';",
+                  "if (id) pm.collectionVariables.set('examId', id);",
+                  "pm.test('Exam id exists for next requests', function () { pm.expect(pm.collectionVariables.get('examId')).to.be.a('string').and.not.empty; });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "21 - Doctor Exam Submissions",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{doctorToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/doctor/exams/{{examId}}/submissions"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Doctor exam submissions success', function () { pm.expect(pm.response.code).to.eql(200); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "22 - Doctor Exam Results",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{doctorToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/doctor/exams/{{examId}}/results"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Doctor exam results success', function () { pm.expect(pm.response.code).to.eql(200); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "04 - Admin Flow",
+      "item": [
+        {
+          "name": "24 - Admin Update Doctor Profile",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"department\": \"Engineering\",\n  \"courses\": [\"AI\", \"Cloud\", \"Networks\"],\n  \"phone\": \"+201000000000\",\n  \"role\": \"doctor\"\n}"
+            },
+            "url": "{{baseUrl}}/admin/users/{{doctorId}}/profile"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Admin updates doctor profile', function () {",
+                  "  pm.expect(pm.response.code).to.eql(200);",
+                  "});",
+                  "const json = pm.response.json();",
+                  "pm.test('Updated user payload', function () {",
+                  "  pm.expect(json).to.have.property('user');",
+                  "  pm.expect(json.user.role).to.eql('doctor');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "27 - Admin List Users",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/admin/users"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Admin list users success', function () { pm.expect(pm.response.code).to.eql(200); });",
+                  "const json = pm.response.json();",
+                  "pm.test('Admin users payload shape', function () {",
+                  "  pm.expect(json).to.have.property('users');",
+                  "  pm.expect(json).to.have.property('total');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "28 - Admin Deactivate Doctor",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"active\": false\n}"
+            },
+            "url": "{{baseUrl}}/admin/users/{{doctorId}}/status"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Admin deactivates doctor success', function () { pm.expect(pm.response.code).to.eql(200); });",
+                  "const json = pm.response.json();",
+                  "pm.test('Doctor deactivated', function () { pm.expect(json.user.active).to.eql(false); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "29 - Admin Reactivate Doctor",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"active\": true\n}"
+            },
+            "url": "{{baseUrl}}/admin/users/{{doctorId}}/status"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Admin reactivates doctor success', function () { pm.expect(pm.response.code).to.eql(200); });",
+                  "const json = pm.response.json();",
+                  "pm.test('Doctor reactivated', function () { pm.expect(json.user.active).to.eql(true); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "30 - Admin Analytics",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/admin/analytics"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Admin analytics success', function () { pm.expect(pm.response.code).to.eql(200); });",
+                  "const json = pm.response.json();",
+                  "pm.test('Analytics payload shape', function () {",
+                  "  pm.expect(json).to.have.property('totalExams');",
+                  "  pm.expect(json).to.have.property('avgScore');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "05 - AI",
+      "item": [
+        {
+          "name": "08 - AI Detection",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{studentToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"text\": \"This is a sample answer for detector check\"\n}"
+            },
+            "url": "{{baseUrl}}/ai-detection"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('AI detection reachable', function () {",
+                  "  pm.expect([200, 502]).to.include(pm.response.code);",
+                  "});"
+                ]
+              }
+            }
+          ]
         }
       ]
     }
