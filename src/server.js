@@ -862,6 +862,53 @@ app.post(
 );
 
 app.post(
+  '/exams/:id/upload',
+  auth,
+  allowRoles('doctor', 'admin'),
+  upload.any(),
+  asyncRoute(async (req, res) => {
+    const db = getDbOrFail();
+    const _id = parseObjectId(req.params.id);
+    if (!_id) return res.status(400).json({ message: 'Invalid exam id' });
+    const assignment = await db.collection('assignments').findOne({ _id });
+    const access = ensureDoctorAssignmentAccess(assignment, req.user);
+    if (!access.ok) return res.status(access.status).json({ message: access.message });
+    if (!isExamAssignment(assignment)) return res.status(404).json({ message: 'Exam not found' });
+
+    const uploaded = pickUploadedFile(req.files);
+    const validType = validateUploadFileType(uploaded);
+    if (!validType.ok) return res.status(400).json({ message: validType.message });
+
+    await db.collection('assignments').updateOne(
+      { _id },
+      {
+        $set: {
+          examFile: {
+            originalName: uploaded.originalname,
+            mimeType: uploaded.mimetype,
+            size: uploaded.size,
+            uploadedAt: new Date(),
+          },
+          updatedAt: new Date(),
+        },
+      }
+    );
+
+    return res.json({
+      ok: true,
+      examId: idToString(_id),
+      assignmentId: idToString(_id),
+      file_url: null,
+      file: {
+        originalName: uploaded.originalname,
+        mimeType: uploaded.mimetype,
+        size: uploaded.size,
+      },
+    });
+  })
+);
+
+app.post(
   '/assignments/:id/model-answer',
   auth,
   allowRoles('doctor', 'admin'),
@@ -1215,7 +1262,11 @@ app.get(
   allowRoles('student'),
   asyncRoute(async (req, res) => {
     const db = getDbOrFail();
-    const assignments = await db.collection('assignments').find({}).sort({ createdAt: -1 }).toArray();
+    const assignments = await db
+      .collection('assignments')
+      .find({ $nor: [{ type: 'exam' }, { kind: 'exam' }] })
+      .sort({ createdAt: -1 })
+      .toArray();
     const submissions = await db
       .collection('submissions')
       .find({ studentId: { $in: userIdAlternatives(req.user.id) } })
@@ -1240,7 +1291,11 @@ app.get(
 );
 app.get('/api/student/assignments', auth, allowRoles('student'), asyncRoute(async (req, res) => {
   const db = getDbOrFail();
-  const assignments = await db.collection('assignments').find({}).sort({ createdAt: -1 }).toArray();
+  const assignments = await db
+    .collection('assignments')
+    .find({ $nor: [{ type: 'exam' }, { kind: 'exam' }] })
+    .sort({ createdAt: -1 })
+    .toArray();
   const submissions = await db
     .collection('submissions')
     .find({ studentId: { $in: userIdAlternatives(req.user.id) } })
@@ -1267,7 +1322,11 @@ app.get(
   allowRoles('student'),
   asyncRoute(async (req, res) => {
     const db = getDbOrFail();
-    const assignments = await db.collection('assignments').find({}).sort({ dueDate: 1 }).toArray();
+    const assignments = await db
+      .collection('assignments')
+      .find({ $or: [{ type: 'exam' }, { kind: 'exam' }] })
+      .sort({ dueDate: 1 })
+      .toArray();
     const submissions = await db
       .collection('submissions')
       .find({ studentId: { $in: userIdAlternatives(req.user.id) } })
@@ -1281,6 +1340,7 @@ app.get(
         status === 'not_started' ? 'start_exam' : status === 'in_progress' ? 'continue_exam' : 'view_result';
       return {
         examId: idToString(a._id),
+        assignmentId: idToString(a._id),
         title: a.title || 'Untitled exam',
         dueDate: a.dueDate,
         status,
@@ -1706,6 +1766,7 @@ app.get(
       const gradedCount = related.filter((s) => s.status === 'graded').length;
       return {
         examId: idToString(a._id),
+        assignmentId: idToString(a._id),
         title: a.title || 'Untitled exam',
         type: getAssignmentType(a),
         status: getAssignmentStatus(a),
@@ -1760,6 +1821,7 @@ app.get(
 
     return res.json({
       examId: idToString(assignmentId),
+      assignmentId: idToString(assignmentId),
       title: assignment?.title || 'Untitled exam',
       type: getAssignmentType(assignment),
       status: getAssignmentStatus(assignment),
@@ -2007,6 +2069,7 @@ app.get(
 
     return res.json({
       examId: idToString(assignmentId),
+      assignmentId: idToString(assignmentId),
       title: assignment?.title || 'Untitled',
       type: getAssignmentType(assignment),
       status: getAssignmentStatus(assignment),
@@ -2771,6 +2834,124 @@ app.post(
     return res.json(payload);
   })
 );
+
+// Exam aliases to mirror assignment flow endpoints.
+app.get(
+  '/exams/:id/submissions',
+  auth,
+  allowRoles('doctor', 'admin'),
+  asyncRoute(async (req, res) => {
+    const db = getDbOrFail();
+    const assignmentId = parseObjectId(req.params.id);
+    if (!assignmentId) return res.status(400).json({ message: 'Invalid exam id' });
+
+    const assignment = await db.collection('assignments').findOne({ _id: assignmentId });
+    const access = ensureDoctorAssignmentAccess(assignment, req.user);
+    if (!access.ok) return res.status(access.status).json({ message: access.message });
+    if (!isExamAssignment(assignment)) return res.status(404).json({ message: 'Exam not found' });
+
+    const submissions = await db
+      .collection('submissions')
+      .find({ assignmentId: { $in: [assignmentId, String(assignmentId)] } })
+      .sort({ createdAt: -1 })
+      .toArray();
+    const attemptedCount = submissions.length;
+    const gradedCount = submissions.filter((s) => s.status === 'graded').length;
+
+    return res.json({
+      examId: idToString(assignmentId),
+      assignmentId: idToString(assignmentId),
+      title: assignment?.title || 'Untitled exam',
+      type: getAssignmentType(assignment),
+      status: getAssignmentStatus(assignment),
+      dueDate: assignment?.dueDate || null,
+      totalMark: assignment?.totalMark ?? null,
+      attemptedCount,
+      submissions: { graded: gradedCount, pending: attemptedCount - gradedCount },
+      items: submissions.map((s) => ({
+        submissionId: idToString(s._id),
+        studentId: idToString(s.studentId),
+        studentName: s.studentName || s.studentEmail || 'Student',
+        studentEmail: s.studentEmail || '',
+        status: s.status === 'graded' ? 'ai_graded' : s.status === 'submitted' ? 'submitted' : s.status,
+        score: typeof s.score === 'number' ? s.score : null,
+        action: 'review_submission',
+      })),
+    });
+  })
+);
+
+app.get(
+  '/exams/:id/results',
+  auth,
+  allowRoles('doctor', 'admin'),
+  asyncRoute(async (req, res) => {
+    const db = getDbOrFail();
+    const assignmentId = parseObjectId(req.params.id);
+    if (!assignmentId) return res.status(400).json({ message: 'Invalid exam id' });
+
+    const assignment = await db.collection('assignments').findOne({ _id: assignmentId });
+    const access = ensureDoctorAssignmentAccess(assignment, req.user);
+    if (!access.ok) return res.status(access.status).json({ message: access.message });
+    if (!isExamAssignment(assignment)) return res.status(404).json({ message: 'Exam not found' });
+
+    const submissions = await db
+      .collection('submissions')
+      .find({ assignmentId: { $in: [assignmentId, String(assignmentId)] } })
+      .toArray();
+    const attemptedCount = submissions.length;
+    const gradedCount = submissions.filter((s) => typeof s.score === 'number').length;
+
+    return res.json({
+      examId: idToString(assignmentId),
+      assignmentId: idToString(assignmentId),
+      title: assignment?.title || 'Untitled',
+      type: getAssignmentType(assignment),
+      status: getAssignmentStatus(assignment),
+      dueDate: assignment?.dueDate || null,
+      totalMark: Number(assignment?.totalMark ?? 20),
+      attemptedCount,
+      submissions: { graded: gradedCount, pending: attemptedCount - gradedCount },
+    });
+  })
+);
+
+app.patch(
+  '/exams/:id/publish',
+  auth,
+  allowRoles('doctor', 'admin'),
+  asyncRoute(async (req, res) => {
+    const db = getDbOrFail();
+    const assignmentId = parseObjectId(req.params.id);
+    if (!assignmentId) return res.status(400).json({ message: 'Invalid exam id' });
+
+    const assignment = await db.collection('assignments').findOne({ _id: assignmentId });
+    const access = ensureDoctorAssignmentAccess(assignment, req.user);
+    if (!access.ok) return res.status(access.status).json({ message: access.message });
+    if (!isExamAssignment(assignment)) return res.status(404).json({ message: 'Exam not found' });
+
+    await db.collection('assignments').updateOne(
+      { _id: assignmentId },
+      { $set: { resultsPublished: true, resultsPublishedAt: new Date(), updatedAt: new Date() } }
+    );
+    await logAudit({
+      actor: req.user,
+      action: 'results.publish',
+      targetType: 'assignment',
+      targetId: idToString(assignmentId),
+      meta: { route: '/exams/:id/publish' },
+    });
+
+    return res.json({
+      published: true,
+      examId: idToString(assignmentId),
+      assignmentId: idToString(assignmentId),
+    });
+  })
+);
+
+app.post('/exams/:id/model-answer', auth, allowRoles('doctor', 'admin'), upload.any(), uploadModelAnswerHandler);
+app.post('/api/exams/:id/model-answer', auth, allowRoles('doctor', 'admin'), upload.any(), uploadModelAnswerHandler);
 
 app.use((_req, res) => {
   return sendApiError(res, 404, 'ROUTE_NOT_FOUND', 'Route not found');
