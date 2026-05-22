@@ -882,17 +882,18 @@ app.get(
   allowRoles('doctor', 'admin'),
   asyncRoute(async (req, res) => {
     const db = getDbOrFail();
+    const { page, limit, skip } = parsePagination(req.query);
     const assignmentId = parseObjectId(req.params.id);
     if (!assignmentId) return res.status(400).json({ message: 'Invalid assignment id' });
     const assignment = await db.collection('assignments').findOne({ _id: assignmentId });
     const access = ensureDoctorAssignmentAccess(assignment, req.user);
     if (!access.ok) return res.status(access.status).json({ message: access.message });
-    const docs = await db
-      .collection('submissions')
-      .find({ assignmentId: { $in: [assignmentId, String(assignmentId)] } })
-      .sort({ createdAt: -1 })
-      .toArray();
-    return res.json(docs);
+    const query = { assignmentId: { $in: [assignmentId, String(assignmentId)] } };
+    const [docs, total] = await Promise.all([
+      db.collection('submissions').find(query).sort({ createdAt: -1 }).skip(skip).limit(limit).toArray(),
+      db.collection('submissions').countDocuments(query),
+    ]);
+    return res.json(buildPaginatedResponse({ items: docs, total, page, limit }));
   })
 );
 
@@ -990,13 +991,14 @@ app.get(
   auth,
   asyncRoute(async (req, res) => {
     const db = getDbOrFail();
+    const { page, limit, skip } = parsePagination(req.query);
     if (req.user.role === 'student') {
-      const docs = await db
-        .collection('submissions')
-        .find({ studentId: { $in: userIdAlternatives(req.user.id) } })
-        .sort({ createdAt: -1 })
-        .toArray();
-      return res.json(docs);
+      const query = { studentId: { $in: userIdAlternatives(req.user.id) } };
+      const [docs, total] = await Promise.all([
+        db.collection('submissions').find(query).sort({ createdAt: -1 }).skip(skip).limit(limit).toArray(),
+        db.collection('submissions').countDocuments(query),
+      ]);
+      return res.json(buildPaginatedResponse({ items: docs, total, page, limit }));
     }
 
     if (req.user.role === 'doctor') {
@@ -1005,18 +1007,23 @@ app.get(
         .find(doctorOwnershipFilter(req.user), { projection: { _id: 1 } })
         .toArray();
       const assignmentIds = assignments.flatMap((a) => [a._id, String(a._id)]);
-      const docs = assignmentIds.length
-        ? await db
-            .collection('submissions')
-            .find({ assignmentId: { $in: assignmentIds } })
-            .sort({ createdAt: -1 })
-            .toArray()
-        : [];
-      return res.json(docs);
+      const query = assignmentIds.length ? { assignmentId: { $in: assignmentIds } } : null;
+      if (!query) {
+        return res.json(buildPaginatedResponse({ items: [], total: 0, page, limit }));
+      }
+      const [docs, total] = await Promise.all([
+        db.collection('submissions').find(query).sort({ createdAt: -1 }).skip(skip).limit(limit).toArray(),
+        db.collection('submissions').countDocuments(query),
+      ]);
+      return res.json(buildPaginatedResponse({ items: docs, total, page, limit }));
     }
 
-    const docs = await db.collection('submissions').find({}).sort({ createdAt: -1 }).toArray();
-    return res.json(docs);
+    const query = {};
+    const [docs, total] = await Promise.all([
+      db.collection('submissions').find(query).sort({ createdAt: -1 }).skip(skip).limit(limit).toArray(),
+      db.collection('submissions').countDocuments(query),
+    ]);
+    return res.json(buildPaginatedResponse({ items: docs, total, page, limit }));
   })
 );
 
