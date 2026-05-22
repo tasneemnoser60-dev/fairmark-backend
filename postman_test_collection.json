@@ -824,6 +824,224 @@
           }
         }
       ]
+    },
+    {
+      "name": "25 - Publish Assignment Results",
+      "request": {
+        "method": "PATCH",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{doctorToken}}"
+          }
+        ],
+        "url": "{{baseUrl}}/grades/{{assignmentId}}/publish"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Publish assignment results success', function () { pm.expect(pm.response.code).to.eql(200); });",
+              "const json = pm.response.json();",
+              "pm.test('Publish payload shape', function () {",
+              "  pm.expect(json).to.have.property('published');",
+              "  pm.expect(json.published).to.eql(true);",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "26 - Student Grades",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{studentToken}}"
+          }
+        ],
+        "url": "{{baseUrl}}/grades/student"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Student grades success', function () { pm.expect(pm.response.code).to.eql(200); });",
+              "const json = pm.response.json();",
+              "pm.test('Student grades payload shape', function () {",
+              "  pm.expect(json).to.have.property('grades');",
+              "  pm.expect(json).to.have.property('total_score');",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "27 - Admin List Users",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{adminToken}}"
+          }
+        ],
+        "url": "{{baseUrl}}/admin/users"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Admin list users success', function () { pm.expect(pm.response.code).to.eql(200); });",
+              "const json = pm.response.json();",
+              "pm.test('Admin users payload shape', function () {",
+              "  pm.expect(json).to.have.property('users');",
+              "  pm.expect(json).to.have.property('total');",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "28 - Admin Deactivate Doctor",
+      "request": {
+        "method": "PATCH",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{adminToken}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"active\": false\n}"
+        },
+        "url": "{{baseUrl}}/admin/users/{{doctorId}}/status"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Admin deactivates doctor success', function () { pm.expect(pm.response.code).to.eql(200); });",
+              "const json = pm.response.json();",
+              "pm.test('Doctor deactivated', function () { pm.expect(json.user.active).to.eql(false); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "29 - Admin Reactivate Doctor",
+      "request": {
+        "method": "PATCH",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{adminToken}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"active\": true\n}"
+        },
+        "url": "{{baseUrl}}/admin/users/{{doctorId}}/status"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Admin reactivates doctor success', function () { pm.expect(pm.response.code).to.eql(200); });",
+              "const json = pm.response.json();",
+              "pm.test('Doctor reactivated', function () { pm.expect(json.user.active).to.eql(true); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "30 - Admin Analytics",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{adminToken}}"
+          }
+        ],
+        "url": "{{baseUrl}}/admin/analytics"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Admin analytics success', function () { pm.expect(pm.response.code).to.eql(200); });",
+              "const json = pm.response.json();",
+              "pm.test('Analytics payload shape', function () {",
+              "  pm.expect(json).to.have.property('totalExams');",
+              "  pm.expect(json).to.have.property('avgScore');",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "31 - Upload Assignment File Validation",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{doctorToken}}"
+          }
+        ],
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            {
+              "key": "file",
+              "type": "file",
+              "src": ""
+            }
+          ]
+        },
+        "url": "{{baseUrl}}/assignments/{{assignmentId}}/upload"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Upload assignment file validation returns 200/400', function () { pm.expect([200,400]).to.include(pm.response.code); });"
+            ]
+          }
+        }
+      ]
     }
   ]
 }
