@@ -861,6 +861,152 @@
               }
             }
           ]
+        },
+        {
+          "name": "23 - Exam Submissions (Alias)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{doctorToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/exams/{{examId}}/submissions"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Exam submissions alias success', function () { pm.expect(pm.response.code).to.eql(200); });",
+                  "const json = pm.response.json();",
+                  "pm.test('Exam submissions alias payload', function () { pm.expect(json).to.have.property('examId'); pm.expect(json).to.have.property('assignmentId'); pm.expect(json).to.have.property('items'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "24 - Exam Results (Alias)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{doctorToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/exams/{{examId}}/results"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Exam results alias success', function () { pm.expect(pm.response.code).to.eql(200); });",
+                  "const json = pm.response.json();",
+                  "pm.test('Exam results alias payload', function () { pm.expect(json).to.have.property('examId'); pm.expect(json).to.have.property('assignmentId'); pm.expect(json).to.have.property('submissions'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "25 - Publish Exam Results",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{doctorToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/exams/{{examId}}/publish"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Publish exam results success', function () { pm.expect(pm.response.code).to.eql(200); });",
+                  "const json = pm.response.json();",
+                  "pm.test('Publish exam payload', function () { pm.expect(json).to.have.property('published'); pm.expect(json.published).to.eql(true); pm.expect(json).to.have.property('examId'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "26 - Upload Exam Model Answer (Alias)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{doctorToken}}"
+              }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": ""
+                }
+              ]
+            },
+            "url": "{{baseUrl}}/exams/{{examId}}/model-answer"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Upload exam model answer returns 200/400', function () { pm.expect([200,400]).to.include(pm.response.code); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "27 - Upload Exam Paper (Alias)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{doctorToken}}"
+              }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": ""
+                }
+              ]
+            },
+            "url": "{{baseUrl}}/exams/{{examId}}/upload"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Upload exam paper returns 200/400', function () { pm.expect([200,400]).to.include(pm.response.code); });"
+                ]
+              }
+            }
+          ]
         }
       ]
     },
