@@ -1007,6 +1007,66 @@
               }
             }
           ]
+        },
+        {
+          "name": "28 - Update Exam (Alias)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{doctorToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Updated Exam {{now}}\",\n  \"description\": \"Updated by Postman\",\n  \"totalMark\": 40\n}"
+            },
+            "url": "{{baseUrl}}/exams/{{examId}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Update exam alias success', function () { pm.expect(pm.response.code).to.eql(200); });",
+                  "const json = pm.response.json();",
+                  "pm.test('Update exam payload', function () { pm.expect(json).to.have.property('examId'); pm.expect(json).to.have.property('assignmentId'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "32 - Delete Exam (Alias)",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{doctorToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/exams/{{examId}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Delete exam alias success', function () { pm.expect(pm.response.code).to.eql(200); });",
+                  "const json = pm.response.json();",
+                  "pm.test('Delete exam payload', function () { pm.expect(json.deleted).to.eql(true); });"
+                ]
+              }
+            }
+          ]
         }
       ]
     },
@@ -1173,6 +1233,32 @@
                   "  pm.expect(json).to.have.property('totalExams');",
                   "  pm.expect(json).to.have.property('avgScore');",
                   "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "31 - Admin Audit Logs",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/admin/audit-logs?page=1&limit=10"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Admin audit logs success', function () { pm.expect(pm.response.code).to.eql(200); });",
+                  "const json = pm.response.json();",
+                  "pm.test('Admin audit logs payload', function () { pm.expect(json).to.have.property('items'); pm.expect(json).to.have.property('pagination'); });"
                 ]
               }
             }
