@@ -58,6 +58,12 @@ app.use(
     legacyHeaders: false,
   })
 );
+const authRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: Number(process.env.AUTH_RATE_LIMIT_MAX || 40),
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 
 const port = Number(process.env.PORT) || 4000;
 const mongoUri = process.env.MONGO_URI;
@@ -85,6 +91,50 @@ const getDbOrFail = () => {
   return db;
 };
 
+const sendApiError = (res, status, code, message, details = null) =>
+  res.status(status).json({
+    error: {
+      code,
+      message,
+      details,
+    },
+  });
+
+const parsePagination = (query = {}) => {
+  const page = Math.max(1, Number(query.page) || 1);
+  const limit = Math.min(100, Math.max(1, Number(query.limit) || 20));
+  const skip = (page - 1) * limit;
+  return { page, limit, skip };
+};
+
+const buildPaginatedResponse = ({ items, total, page, limit }) => ({
+  items,
+  pagination: {
+    page,
+    limit,
+    total,
+    totalPages: Math.max(1, Math.ceil(total / limit)),
+  },
+});
+
+const logAudit = async ({ actor, action, targetType, targetId, meta = {} }) => {
+  try {
+    const db = getDbOrFail();
+    await db.collection('audit_logs').insertOne({
+      actorId: actor?.id || null,
+      actorEmail: actor?.email || '',
+      actorRole: actor?.role || '',
+      action,
+      targetType,
+      targetId,
+      meta,
+      createdAt: new Date(),
+    });
+  } catch (err) {
+    console.error(`[audit] action=${action} target=${targetType}:${targetId} error=${err.message}`);
+  }
+};
+
 const ensureIndexes = async () => {
   const db = getDbOrFail();
   await Promise.all([
@@ -99,6 +149,7 @@ const ensureIndexes = async () => {
       { name: 'submissions_assignmentId' }
     ),
     db.collection('submissions').createIndex({ studentId: 1 }, { name: 'submissions_studentId' }),
+    db.collection('audit_logs').createIndex({ createdAt: -1 }, { name: 'audit_logs_createdAt_desc' }),
   ]);
 };
 
@@ -432,6 +483,30 @@ app.get('/', (_req, res) => {
   });
 });
 
+app.get('/openapi.json', (_req, res) => {
+  res.json({
+    openapi: '3.0.0',
+    info: { title: 'Fairmark Backend API', version: '1.0.0' },
+    paths: {
+      '/api/auth/register': { post: { summary: 'Register user (student/doctor/admin)' } },
+      '/api/auth/login': { post: { summary: 'Login user and return JWT' } },
+      '/assignments': { post: { summary: 'Create assignment' }, get: { summary: 'List assignments' } },
+      '/submissions': { post: { summary: 'Create or update student submission' } },
+      '/grades/student': { get: { summary: 'Student grades list' } },
+      '/grades/{assignmentId}/publish': { patch: { summary: 'Publish assignment results' } },
+      '/admin/users': { get: { summary: 'List users (paginated)' } },
+      '/admin/users/{id}/status': { patch: { summary: 'Activate/deactivate user' } },
+      '/admin/analytics': { get: { summary: 'Platform analytics' } },
+    },
+  });
+});
+
+// Simple API version prefix compatibility: /api/v1/* -> /api/*
+app.use('/api/v1', (req, _res, next) => {
+  req.url = `/api${req.url}`;
+  next();
+});
+
 const registerHandler = asyncRoute(async (req, res) => {
   const { value, error } = registerSchema.validate(req.body);
   if (error) return res.status(400).json({ message: error.message });
@@ -478,10 +553,10 @@ const loginHandler = asyncRoute(async (req, res) => {
 });
 
 // Keep both route styles to avoid frontend 404s.
-app.post('/api/auth/register', registerHandler);
-app.post('/auth/register', registerHandler);
-app.post('/api/auth/login', loginHandler);
-app.post('/auth/login', loginHandler);
+app.post('/api/auth/register', authRateLimiter, registerHandler);
+app.post('/auth/register', authRateLimiter, registerHandler);
+app.post('/api/auth/login', authRateLimiter, loginHandler);
+app.post('/auth/login', authRateLimiter, loginHandler);
 
 const createAssignmentHandler = asyncRoute(async (req, res) => {
     const { value, error } = assignmentSchema.validate(req.body, {
@@ -576,14 +651,18 @@ app.get(
   auth,
   asyncRoute(async (req, res) => {
     const db = getDbOrFail();
+    const { page, limit, skip } = parsePagination(req.query);
     const query =
       req.user.role === 'admin'
         ? {}
         : req.user.role === 'doctor'
           ? doctorOwnershipFilter(req.user)
           : {};
-    const docs = await db.collection('assignments').find(query).sort({ createdAt: -1 }).toArray();
-    return res.json(docs);
+    const [docs, total] = await Promise.all([
+      db.collection('assignments').find(query).sort({ createdAt: -1 }).skip(skip).limit(limit).toArray(),
+      db.collection('assignments').countDocuments(query),
+    ]);
+    return res.json(buildPaginatedResponse({ items: docs, total, page, limit }));
   })
 );
 
@@ -839,6 +918,39 @@ app.post(
     const now = new Date();
     const studentObjectId = parseObjectId(req.user.id);
     const uploaded = (req.files || []).find((f) => ['file', 'image', 'images'].includes(f.fieldname));
+    if (uploaded) {
+      const validType = validateUploadFileType(uploaded);
+      if (!validType.ok) return res.status(400).json({ message: validType.message });
+    }
+    const existingSubmission = await db.collection('submissions').findOne({
+      assignmentId,
+      studentId: { $in: userIdAlternatives(req.user.id) },
+      status: { $ne: 'graded' },
+    });
+    if (existingSubmission) {
+      const updateFields = {
+        answerText: req.body.answerText || existingSubmission.answerText || '',
+        status: 'submitted',
+        updatedAt: now,
+      };
+      if (uploaded) {
+        updateFields.file = {
+          originalName: uploaded.originalname,
+          mimeType: uploaded.mimetype,
+          size: uploaded.size,
+        };
+      }
+      await db.collection('submissions').updateOne({ _id: existingSubmission._id }, { $set: updateFields });
+      const updated = await db.collection('submissions').findOne({ _id: existingSubmission._id });
+      setImmediate(() => {
+        runSubmissionPipeline({ submissionId: idToString(existingSubmission._id) }).catch((err) => {
+          console.error(
+            `[pipeline] submission_id=${idToString(existingSubmission._id)} error=${err.message || 'unknown error'}`
+          );
+        });
+      });
+      return res.json(updated);
+    }
     const doc = {
       assignmentId,
       assignmentTitle: assignment.title,
@@ -959,6 +1071,13 @@ app.put(
     );
     const updated = unwrapFindOneAndUpdateResult(result);
     if (!updated) return res.status(404).json({ message: 'Submission not found' });
+    await logAudit({
+      actor: req.user,
+      action: 'submission.grade.override',
+      targetType: 'submission',
+      targetId: idToString(updated._id),
+      meta: { score },
+    });
     return res.json(updated);
   })
 );
@@ -1913,6 +2032,13 @@ app.post(
       { $set: { resultsPublished: true, resultsPublishedAt: new Date(), updatedAt: new Date() } }
     );
 
+    await logAudit({
+      actor: req.user,
+      action: 'results.publish',
+      targetType: 'assignment',
+      targetId: idToString(assignmentId),
+      meta: { route: '/doctor/results/:assignmentId/publish' },
+    });
     return res.json({
       ok: true,
       assignmentId: idToString(assignmentId),
@@ -1938,6 +2064,13 @@ app.patch(
       { $set: { resultsPublished: true, resultsPublishedAt: new Date(), updatedAt: new Date() } }
     );
 
+    await logAudit({
+      actor: req.user,
+      action: 'results.publish',
+      targetType: 'assignment',
+      targetId: idToString(assignmentId),
+      meta: { route: '/grades/:assignmentId/publish' },
+    });
     return res.json({
       published: true,
       student_notified: false,
@@ -2277,6 +2410,13 @@ app.put(
       );
     const updated = unwrapFindOneAndUpdateResult(result);
     if (!updated) return res.status(404).json({ message: 'User not found' });
+    await logAudit({
+      actor: req.user,
+      action: 'admin.user.role.update',
+      targetType: 'user',
+      targetId: idToString(updated._id),
+      meta: { role },
+    });
     return res.json(okUser(updated));
   })
 );
@@ -2314,6 +2454,13 @@ app.put(
     );
     const updated = unwrapFindOneAndUpdateResult(result);
     if (!updated) return res.status(404).json({ message: 'User not found' });
+    await logAudit({
+      actor: req.user,
+      action: 'admin.user.profile.update',
+      targetType: 'user',
+      targetId: idToString(updated._id),
+      meta: { role: updated.role || '' },
+    });
 
     return res.json({
       message: 'User profile updated',
@@ -2334,9 +2481,13 @@ app.get(
   '/admin/users',
   auth,
   allowRoles('admin'),
-  asyncRoute(async (_req, res) => {
+  asyncRoute(async (req, res) => {
     const db = getDbOrFail();
-    const users = await db.collection('users').find({}).sort({ createdAt: -1 }).toArray();
+    const { page, limit, skip } = parsePagination(req.query);
+    const [users, total] = await Promise.all([
+      db.collection('users').find({}).sort({ createdAt: -1 }).skip(skip).limit(limit).toArray(),
+      db.collection('users').countDocuments({}),
+    ]);
     const items = users.map((u) => ({
       id: idToString(u._id),
       name: u.name || '',
@@ -2346,7 +2497,11 @@ app.get(
       active: u.active !== false,
       createdAt: u.createdAt || null,
     }));
-    return res.json({ users: items, total: items.length });
+    return res.json({
+      users: items,
+      total,
+      ...buildPaginatedResponse({ items, total, page, limit }).pagination,
+    });
   })
 );
 
@@ -2366,6 +2521,13 @@ app.patch(
     );
     const user = unwrapFindOneAndUpdateResult(result);
     if (!user) return res.status(404).json({ message: 'User not found' });
+    await logAudit({
+      actor: req.user,
+      action: active ? 'admin.user.activate' : 'admin.user.deactivate',
+      targetType: 'user',
+      targetId: idToString(user._id),
+      meta: { active: user.active !== false },
+    });
     return res.json({
       updated: true,
       user: {
@@ -2604,16 +2766,17 @@ app.post(
 );
 
 app.use((_req, res) => {
-  res.status(404).json({ message: 'Route not found' });
+  return sendApiError(res, 404, 'ROUTE_NOT_FOUND', 'Route not found');
 });
 
 app.use((err, _req, res, _next) => {
   if (err instanceof multer.MulterError && err.code === 'LIMIT_FILE_SIZE') {
-    return res.status(400).json({ message: 'File too large. Max size is 10MB.' });
+    return sendApiError(res, 400, 'FILE_TOO_LARGE', 'File too large. Max size is 10MB.');
   }
   const status = err.status || 500;
   const message = err.message || 'Internal server error';
-  return res.status(status).json({ message });
+  const code = status >= 500 ? 'INTERNAL_ERROR' : 'REQUEST_ERROR';
+  return sendApiError(res, status, code, message);
 });
 
 const start = async () => {
