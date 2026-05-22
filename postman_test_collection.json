@@ -193,6 +193,40 @@
       "name": "01 - Doctor Assignment Flow",
       "item": [
         {
+          "name": "04b - Create Assignment With Course (Doctor)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{doctorToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Course Assignment {{now}}\",\n  \"description\": \"Course scoped assignment\",\n  \"course\": \"AI\",\n  \"totalMark\": 20,\n  \"dueDate\": \"2026-12-31T12:00:00.000Z\"\n}"
+            },
+            "url": "{{baseUrl}}/assignments"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Create assignment with course success', function () { pm.expect(pm.response.code).to.be.oneOf([200,201]); });",
+                  "const json = pm.response.json();",
+                  "pm.test('Assignment course stored', function () { pm.expect(json.course).to.eql('AI'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
           "name": "04 - Create Assignment (Doctor)",
           "request": {
             "method": "POST",
@@ -450,7 +484,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"department\": \"CS\",\n  \"courses\": [\"AI\", \"Networks\"]\n}"
+              "raw": "{\n  \"department\": \"CS\",\n  \"courses\": [\"AI\", \"Networks\", \"Cloud\"]\n}"
             },
             "url": "{{baseUrl}}/doctor/profile"
           },
@@ -542,6 +576,40 @@
     {
       "name": "02 - Student Flow",
       "item": [
+        {
+          "name": "04 - Update Student Profile (Courses)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{studentToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"department\": \"CS\",\n  \"courses\": [\"AI\", \"Networks\"]\n}"
+            },
+            "url": "{{baseUrl}}/student/profile"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Update student profile success', function () { pm.expect(pm.response.code).to.eql(200); });",
+                  "const json = pm.response.json();",
+                  "pm.test('Student profile payload', function () { pm.expect(json).to.have.property('student'); pm.expect(json.student).to.have.property('courses'); });"
+                ]
+              }
+            }
+          ]
+        },
         {
           "name": "06 - Create Submission (Student)",
           "request": {
@@ -750,6 +818,112 @@
       "name": "03 - Exam Flow",
       "item": [
         {
+          "name": "19b - Ensure Doctor Courses For Exam Flow",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{doctorToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"department\": \"CS\",\n  \"courses\": [\"AI\", \"Networks\", \"Cloud\"]\n}"
+            },
+            "url": "{{baseUrl}}/doctor/profile"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Update doctor profile success', function () {",
+                  "  pm.expect(pm.response.code).to.eql(200);",
+                  "});",
+                  "const json = pm.response.json();",
+                  "pm.test('Updated profile shape', function () {",
+                  "  pm.expect(json).to.have.property('doctor');",
+                  "  pm.expect(json.doctor).to.have.property('department');",
+                  "  pm.expect(json.doctor).to.have.property('courses');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "20b - Create Exam With Course (Doctor)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{doctorToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Course Exam {{now}}\",\n  \"description\": \"Course scoped exam\",\n  \"course\": \"AI\",\n  \"totalMark\": 30,\n  \"dueDate\": \"2026-12-31T12:00:00.000Z\"\n}"
+            },
+            "url": "{{baseUrl}}/exams"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Create exam with course success', function () { pm.expect(pm.response.code).to.be.oneOf([200,201]); });",
+                  "const json = pm.response.json();",
+                  "pm.test('Exam course stored', function () { pm.expect(json.course).to.eql('AI'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "20c - Reject Doctor Wrong Course",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{doctorToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Wrong Course Exam {{now}}\",\n  \"description\": \"Should be rejected\",\n  \"course\": \"Operating Systems\",\n  \"totalMark\": 15,\n  \"dueDate\": \"2026-12-31T12:00:00.000Z\"\n}"
+            },
+            "url": "{{baseUrl}}/exams"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Doctor wrong course rejected', function () { pm.expect(pm.response.code).to.eql(403); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
           "name": "20 - Create Exam (Doctor)",
           "request": {
             "method": "POST",
@@ -765,7 +939,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"title\": \"Exam {{now}}\",\n  \"description\": \"Auto created exam for test flow\",\n  \"totalMark\": 30,\n  \"dueDate\": \"2026-12-31T12:00:00.000Z\"\n}"
+              "raw": "{\n  \"title\": \"Quiz Smoke\",\n  \"description\": \"Auto created exam for test flow\",\n  \"course\": \"AI\",\n  \"totalMark\": 30,\n  \"dueDate\": \"2026-12-31T12:00:00.000Z\"\n}"
             },
             "url": "{{baseUrl}}/exams"
           },
