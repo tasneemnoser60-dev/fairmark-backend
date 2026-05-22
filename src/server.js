@@ -471,6 +471,11 @@ const doctorProfileUpdateSchema = Joi.object({
   courses: Joi.array().items(Joi.string().trim().min(1).max(120)).max(50).optional(),
 }).or('department', 'courses');
 
+const studentProfileUpdateSchema = Joi.object({
+  department: Joi.string().trim().allow('').max(120).optional(),
+  courses: Joi.array().items(Joi.string().trim().min(1).max(120)).max(50).optional(),
+}).or('department', 'courses');
+
 app.get('/health', (_req, res) => {
   res.json({ ok: true, service: 'flutter-backend-api' });
 });
@@ -568,6 +573,17 @@ const createAssignmentHandler = asyncRoute(async (req, res) => {
     const db = getDbOrFail();
     const now = new Date();
     const doctorObjectId = parseObjectId(req.user.id);
+    const actorUser = doctorObjectId ? await db.collection('users').findOne({ _id: doctorObjectId }) : null;
+    const actorCourses = Array.isArray(actorUser?.courses) ? actorUser.courses.map((c) => String(c).trim()) : [];
+    const requestedCourse = String(req.body.course || '').trim();
+    const course =
+      requestedCourse || (actorCourses.length === 1 ? actorCourses[0] : '');
+    if (req.user.role === 'doctor' && actorCourses.length > 0 && !course) {
+      return res.status(400).json({ message: 'course is required for doctor assignments' });
+    }
+    if (req.user.role === 'doctor' && actorCourses.length > 0 && course && !actorCourses.includes(course)) {
+      return res.status(403).json({ message: 'Doctor can create assignments only for own courses' });
+    }
     const uploaded = pickUploadedFile(req.files);
     const assignmentTextRaw = String(
       req.body.assignmentText ?? req.body.assignment ?? req.body.text ?? ''
@@ -578,6 +594,7 @@ const createAssignmentHandler = asyncRoute(async (req, res) => {
       dueDate: new Date(value.dueDate),
       doctorId: doctorObjectId || req.user.id,
       doctorEmail: req.user.email,
+      course,
       assignmentText,
       modelAnswer: uploaded
         ? {
@@ -614,6 +631,17 @@ const createExamHandler = asyncRoute(async (req, res) => {
   const db = getDbOrFail();
   const now = new Date();
   const doctorObjectId = parseObjectId(req.user.id);
+  const actorUser = doctorObjectId ? await db.collection('users').findOne({ _id: doctorObjectId }) : null;
+  const actorCourses = Array.isArray(actorUser?.courses) ? actorUser.courses.map((c) => String(c).trim()) : [];
+  const requestedCourse = String(req.body.course || '').trim();
+  const course =
+    requestedCourse || (actorCourses.length === 1 ? actorCourses[0] : '');
+  if (req.user.role === 'doctor' && actorCourses.length > 0 && !course) {
+    return res.status(400).json({ message: 'course is required for doctor exams' });
+  }
+  if (req.user.role === 'doctor' && actorCourses.length > 0 && course && !actorCourses.includes(course)) {
+    return res.status(403).json({ message: 'Doctor can create exams only for own courses' });
+  }
   const uploaded = pickUploadedFile(req.files);
   const assignmentTextRaw = String(
     req.body.assignmentText ?? req.body.assignment ?? req.body.text ?? ''
@@ -626,6 +654,7 @@ const createExamHandler = asyncRoute(async (req, res) => {
     dueDate: new Date(value.dueDate),
     doctorId: doctorObjectId || req.user.id,
     doctorEmail: normalizeEmail(req.user.email),
+    course,
     assignmentText,
     modelAnswer: uploaded
       ? {
@@ -1263,7 +1292,16 @@ app.get(
   asyncRoute(async (req, res) => {
     const db = getDbOrFail();
     const now = new Date();
-    const assignments = await db.collection('assignments').find({}).sort({ dueDate: 1 }).toArray();
+    const studentId = parseObjectId(req.user.id);
+    const studentUser = studentId ? await db.collection('users').findOne({ _id: studentId }) : null;
+    const studentCourses = Array.isArray(studentUser?.courses)
+      ? studentUser.courses.map((c) => String(c).trim()).filter(Boolean)
+      : [];
+    const assignments = await db
+      .collection('assignments')
+      .find(studentCourses.length ? { course: { $in: studentCourses } } : { _id: { $exists: false } })
+      .sort({ dueDate: 1 })
+      .toArray();
     const submissions = await db
       .collection('submissions')
       .find({ studentId: { $in: userIdAlternatives(req.user.id) } })
@@ -1292,7 +1330,16 @@ app.get(
 app.get('/api/student/dashboard', auth, allowRoles('student'), asyncRoute(async (req, res) => {
   const db = getDbOrFail();
   const now = new Date();
-  const assignments = await db.collection('assignments').find({}).sort({ dueDate: 1 }).toArray();
+  const studentId = parseObjectId(req.user.id);
+  const studentUser = studentId ? await db.collection('users').findOne({ _id: studentId }) : null;
+  const studentCourses = Array.isArray(studentUser?.courses)
+    ? studentUser.courses.map((c) => String(c).trim()).filter(Boolean)
+    : [];
+  const assignments = await db
+    .collection('assignments')
+    .find(studentCourses.length ? { course: { $in: studentCourses } } : { _id: { $exists: false } })
+    .sort({ dueDate: 1 })
+    .toArray();
   const submissions = await db
     .collection('submissions')
     .find({ studentId: { $in: userIdAlternatives(req.user.id) } })
@@ -1319,9 +1366,19 @@ app.get(
   allowRoles('student'),
   asyncRoute(async (req, res) => {
     const db = getDbOrFail();
+    const studentId = parseObjectId(req.user.id);
+    const studentUser = studentId ? await db.collection('users').findOne({ _id: studentId }) : null;
+    const studentCourses = Array.isArray(studentUser?.courses)
+      ? studentUser.courses.map((c) => String(c).trim()).filter(Boolean)
+      : [];
     const assignments = await db
       .collection('assignments')
-      .find({ $nor: [{ type: 'exam' }, { kind: 'exam' }] })
+      .find({
+        $and: [
+          { $nor: [{ type: 'exam' }, { kind: 'exam' }] },
+          studentCourses.length ? { course: { $in: studentCourses } } : { _id: { $exists: false } },
+        ],
+      })
       .sort({ createdAt: -1 })
       .toArray();
     const submissions = await db
@@ -1348,9 +1405,19 @@ app.get(
 );
 app.get('/api/student/assignments', auth, allowRoles('student'), asyncRoute(async (req, res) => {
   const db = getDbOrFail();
+  const studentId = parseObjectId(req.user.id);
+  const studentUser = studentId ? await db.collection('users').findOne({ _id: studentId }) : null;
+  const studentCourses = Array.isArray(studentUser?.courses)
+    ? studentUser.courses.map((c) => String(c).trim()).filter(Boolean)
+    : [];
   const assignments = await db
     .collection('assignments')
-    .find({ $nor: [{ type: 'exam' }, { kind: 'exam' }] })
+    .find({
+      $and: [
+        { $nor: [{ type: 'exam' }, { kind: 'exam' }] },
+        studentCourses.length ? { course: { $in: studentCourses } } : { _id: { $exists: false } },
+      ],
+    })
     .sort({ createdAt: -1 })
     .toArray();
   const submissions = await db
@@ -1380,14 +1447,29 @@ app.get(
   asyncRoute(async (req, res) => {
     const db = getDbOrFail();
     const { page, limit, skip } = parsePagination(req.query);
+    const studentId = parseObjectId(req.user.id);
+    const studentUser = studentId ? await db.collection('users').findOne({ _id: studentId }) : null;
+    const studentCourses = Array.isArray(studentUser?.courses)
+      ? studentUser.courses.map((c) => String(c).trim()).filter(Boolean)
+      : [];
     const assignments = await db
       .collection('assignments')
-      .find({ $or: [{ type: 'exam' }, { kind: 'exam' }] })
+      .find({
+        $and: [
+          { $or: [{ type: 'exam' }, { kind: 'exam' }] },
+          studentCourses.length ? { course: { $in: studentCourses } } : { _id: { $exists: false } },
+        ],
+      })
       .sort({ dueDate: 1 })
       .skip(skip)
       .limit(limit)
       .toArray();
-    const total = await db.collection('assignments').countDocuments({ $or: [{ type: 'exam' }, { kind: 'exam' }] });
+    const total = await db.collection('assignments').countDocuments({
+      $and: [
+        { $or: [{ type: 'exam' }, { kind: 'exam' }] },
+        studentCourses.length ? { course: { $in: studentCourses } } : { _id: { $exists: false } },
+      ],
+    });
     const submissions = await db
       .collection('submissions')
       .find({ studentId: { $in: userIdAlternatives(req.user.id) } })
@@ -1847,6 +1929,59 @@ app.get(
     });
 
     return res.json(buildPaginatedResponse({ items, total, page, limit }));
+  })
+);
+
+app.put(
+  '/student/profile',
+  auth,
+  allowRoles('student'),
+  asyncRoute(async (req, res) => {
+    const db = getDbOrFail();
+    const { value, error } = studentProfileUpdateSchema.validate(req.body, {
+      allowUnknown: false,
+      stripUnknown: true,
+    });
+    if (error) return res.status(400).json({ message: error.message });
+
+    const userId = parseObjectId(req.user.id);
+    if (!userId) return res.status(400).json({ message: 'Invalid user id in token' });
+
+    const updates = { updatedAt: new Date() };
+    if (Object.prototype.hasOwnProperty.call(value, 'department')) {
+      updates.department = String(value.department || '').trim();
+    }
+    if (Object.prototype.hasOwnProperty.call(value, 'courses')) {
+      updates.courses = [...new Set((value.courses || []).map((c) => String(c).trim()).filter(Boolean))];
+    }
+
+    const result = await db.collection('users').findOneAndUpdate(
+      { _id: userId },
+      { $set: updates },
+      { returnDocument: 'after' }
+    );
+    const student = unwrapFindOneAndUpdateResult(result);
+    if (!student) return res.status(404).json({ message: 'Student not found' });
+
+    await logAudit({
+      actor: req.user,
+      action: 'student.profile.update',
+      targetType: 'user',
+      targetId: idToString(student._id),
+      meta: { department: student.department || '' },
+    });
+
+    return res.json({
+      message: 'Profile updated',
+      student: {
+        id: idToString(student._id),
+        name: student.name || '',
+        email: student.email || '',
+        role: student.role || 'student',
+        department: student.department || '',
+        courses: Array.isArray(student.courses) ? student.courses : [],
+      },
+    });
   })
 );
 
