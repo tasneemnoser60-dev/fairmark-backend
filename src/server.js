@@ -711,6 +711,63 @@ app.get(
   })
 );
 
+app.put(
+  '/exams/:id',
+  auth,
+  allowRoles('doctor', 'admin'),
+  asyncRoute(async (req, res) => {
+    const db = getDbOrFail();
+    const _id = parseObjectId(req.params.id);
+    if (!_id) return res.status(400).json({ message: 'Invalid exam id' });
+    const current = await db.collection('assignments').findOne({ _id });
+    if (!current || !isExamAssignment(current)) return res.status(404).json({ message: 'Exam not found' });
+    const access = ensureDoctorAssignmentAccess(current, req.user);
+    if (!access.ok) return res.status(access.status).json({ message: access.message });
+
+    const updates = {
+      title: req.body.title ?? current.title,
+      description: req.body.description ?? current.description,
+      totalMark: req.body.totalMark ?? current.totalMark,
+      dueDate: req.body.dueDate ? new Date(req.body.dueDate) : current.dueDate,
+      updatedAt: new Date(),
+    };
+    await db.collection('assignments').updateOne({ _id }, { $set: updates });
+    await logAudit({
+      actor: req.user,
+      action: 'exam.update',
+      targetType: 'assignment',
+      targetId: idToString(_id),
+      meta: { title: updates.title },
+    });
+    return res.json({ ...current, ...updates, examId: idToString(_id), assignmentId: idToString(_id) });
+  })
+);
+
+app.delete(
+  '/exams/:id',
+  auth,
+  allowRoles('doctor', 'admin'),
+  asyncRoute(async (req, res) => {
+    const db = getDbOrFail();
+    const _id = parseObjectId(req.params.id);
+    if (!_id) return res.status(400).json({ message: 'Invalid exam id' });
+    const current = await db.collection('assignments').findOne({ _id });
+    if (!current || !isExamAssignment(current)) return res.status(404).json({ message: 'Exam not found' });
+    const access = ensureDoctorAssignmentAccess(current, req.user);
+    if (!access.ok) return res.status(access.status).json({ message: access.message });
+
+    await db.collection('assignments').deleteOne({ _id });
+    await logAudit({
+      actor: req.user,
+      action: 'exam.delete',
+      targetType: 'assignment',
+      targetId: idToString(_id),
+      meta: { title: current.title || '' },
+    });
+    return res.json({ deleted: true, examId: idToString(_id), assignmentId: idToString(_id) });
+  })
+);
+
 app.get(
   '/assignments/my',
   auth,
@@ -1322,11 +1379,15 @@ app.get(
   allowRoles('student'),
   asyncRoute(async (req, res) => {
     const db = getDbOrFail();
+    const { page, limit, skip } = parsePagination(req.query);
     const assignments = await db
       .collection('assignments')
       .find({ $or: [{ type: 'exam' }, { kind: 'exam' }] })
       .sort({ dueDate: 1 })
+      .skip(skip)
+      .limit(limit)
       .toArray();
+    const total = await db.collection('assignments').countDocuments({ $or: [{ type: 'exam' }, { kind: 'exam' }] });
     const submissions = await db
       .collection('submissions')
       .find({ studentId: { $in: userIdAlternatives(req.user.id) } })
@@ -1348,7 +1409,7 @@ app.get(
       };
     });
 
-    return res.json({ items });
+    return res.json(buildPaginatedResponse({ items, total, page, limit }));
   })
 );
 
@@ -1749,11 +1810,15 @@ app.get(
   allowRoles('doctor', 'admin'),
   asyncRoute(async (req, res) => {
     const db = getDbOrFail();
+    const { page, limit, skip } = parsePagination(req.query);
     const ownershipQuery = req.user.role === 'admin' ? {} : doctorOwnershipFilter(req.user);
     const examTypeQuery = { $or: [{ type: 'exam' }, { kind: 'exam' }] };
     const assignmentsQuery =
       Object.keys(ownershipQuery).length > 0 ? { $and: [ownershipQuery, examTypeQuery] } : examTypeQuery;
-    const assignments = await db.collection('assignments').find(assignmentsQuery).sort({ createdAt: -1 }).toArray();
+    const [assignments, total] = await Promise.all([
+      db.collection('assignments').find(assignmentsQuery).sort({ createdAt: -1 }).skip(skip).limit(limit).toArray(),
+      db.collection('assignments').countDocuments(assignmentsQuery),
+    ]);
 
     const assignmentIds = assignments.flatMap((a) => [a._id, String(a._id)]);
     const submissions = assignmentIds.length
@@ -1781,7 +1846,7 @@ app.get(
       };
     });
 
-    return res.json({ items });
+    return res.json(buildPaginatedResponse({ items, total, page, limit }));
   })
 );
 
@@ -1915,9 +1980,13 @@ app.get(
   allowRoles('doctor', 'admin'),
   asyncRoute(async (req, res) => {
     const db = getDbOrFail();
+    const { page, limit, skip } = parsePagination(req.query);
     const assignmentsQuery =
       req.user.role === 'admin' ? {} : doctorOwnershipFilter(req.user);
-    const assignments = await db.collection('assignments').find(assignmentsQuery).sort({ createdAt: -1 }).toArray();
+    const [assignments, total] = await Promise.all([
+      db.collection('assignments').find(assignmentsQuery).sort({ createdAt: -1 }).skip(skip).limit(limit).toArray(),
+      db.collection('assignments').countDocuments(assignmentsQuery),
+    ]);
     const assignmentIds = assignments.flatMap((a) => [a._id, String(a._id)]);
     const submissions = assignmentIds.length
       ? await db.collection('submissions').find({ assignmentId: { $in: assignmentIds } }).toArray()
@@ -1943,7 +2012,7 @@ app.get(
       };
     });
 
-    return res.json({ items });
+    return res.json(buildPaginatedResponse({ items, total, page, limit }));
   })
 );
 
@@ -2631,6 +2700,32 @@ app.get(
       totalSubmissions: submissions.length,
       totalUsers: users.length,
     });
+  })
+);
+
+app.get(
+  '/admin/audit-logs',
+  auth,
+  allowRoles('admin'),
+  asyncRoute(async (req, res) => {
+    const db = getDbOrFail();
+    const { page, limit, skip } = parsePagination(req.query);
+    const [logs, total] = await Promise.all([
+      db.collection('audit_logs').find({}).sort({ createdAt: -1 }).skip(skip).limit(limit).toArray(),
+      db.collection('audit_logs').countDocuments({}),
+    ]);
+    const items = logs.map((l) => ({
+      id: idToString(l._id),
+      actorId: l.actorId || '',
+      actorEmail: l.actorEmail || '',
+      actorRole: l.actorRole || '',
+      action: l.action || '',
+      targetType: l.targetType || '',
+      targetId: l.targetId || '',
+      meta: l.meta || {},
+      createdAt: l.createdAt || null,
+    }));
+    return res.json(buildPaginatedResponse({ items, total, page, limit }));
   })
 );
 
