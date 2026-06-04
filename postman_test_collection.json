@@ -56,6 +56,14 @@
     {
       "key": "aiDetectionBaseUrl",
       "value": "https://tasnem11-fairmark-ai-detection.hf.space"
+    },
+    {
+      "key": "vlmBaseUrl",
+      "value": "https://tasnem11-fairmark-vlm.hf.space"
+    },
+    {
+      "key": "gradingBaseUrl",
+      "value": "https://tasnem11-fairmark-grading.hf.space"
     }
   ],
   "item": [
@@ -1510,8 +1518,12 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('Grading health reachable or not configured', function () {",
-                  "  pm.expect([200, 404, 502, 503]).to.include(pm.response.code);",
+                  "pm.test('Backend grading health is connected', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "const json = pm.response.json();",
+                  "pm.test('Backend grading health payload', function () {",
+                  "  pm.expect(json.status).to.eql('Grading API ok');",
                   "});"
                 ]
               }
@@ -1544,14 +1556,15 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('Grading sample reachable or not configured', function () {",
-                  "  pm.expect([200, 404, 502, 503]).to.include(pm.response.code);",
+                  "pm.test('Backend grading sample is connected', function () {",
+                  "  pm.response.to.have.status(200);",
                   "});",
-                  "if (pm.response.code === 200) {",
-                  "  const json = pm.response.json();",
+                  "const json = pm.response.json();",
+                  "pm.test('Backend grading sample payload', function () {",
                   "  pm.expect(json).to.have.property('total_score');",
                   "  pm.expect(json).to.have.property('grade_results');",
-                  "}"
+                  "  pm.expect(json.grade_results).to.be.an(\"array\");",
+                  "});"
                 ]
               }
             }
@@ -1617,6 +1630,56 @@
                   "} else {",
                   "  console.log('AI predict error:', json.error);",
                   "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "22 - VLM Service Health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{vlmBaseUrl}}/health"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('VLM service health responds', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "const json = pm.response.json();",
+                  "pm.test('VLM health payload', function () {",
+                  "  pm.expect(json.status).to.eql('VLM ok');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "23 - Grading Service Health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{gradingBaseUrl}}/health"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Grading service health responds', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "const json = pm.response.json();",
+                  "pm.test('Grading health payload', function () {",
+                  "  pm.expect(json.status).to.eql('Grading API ok');",
+                  "});"
                 ]
               }
             }

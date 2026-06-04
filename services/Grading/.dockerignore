@@ -1,0 +1,9 @@
+.venv/
+.venv311/
+__pycache__/
+grading/__pycache__/
+teacher_materials/
+model_answers/
+saved_index/
+*.log
+*.env
