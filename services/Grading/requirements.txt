@@ -1,0 +1,13 @@
+flask
+gunicorn
+google-generativeai
+python-dotenv
+requests
+torch
+transformers
+sentence-transformers
+llama-index
+llama-index-embeddings-huggingface
+PyMuPDF
+python-docx
+python-pptx

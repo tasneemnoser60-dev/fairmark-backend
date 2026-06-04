@@ -74,6 +74,20 @@ const vlmApiUrl = (process.env.VLM_API_URL || '').replace(/\/+$/, '');
 const gradingApiUrl = (process.env.GRADING_API_URL || '').replace(/\/+$/, '');
 const maxPipelineRetries = Number(process.env.PIPELINE_MAX_RETRIES || 3);
 
+const buildServiceUrl = (baseUrl, defaultPath) => {
+  if (!baseUrl) return '';
+  try {
+    const url = new URL(baseUrl);
+    const cleanPath = url.pathname.replace(/\/+$/, '');
+    url.pathname = cleanPath && cleanPath !== '' ? cleanPath : defaultPath;
+    return url.toString();
+  } catch {
+    return baseUrl;
+  }
+};
+
+const aiDetectionEndpoint = buildServiceUrl(aiDetectionUrl, '/predict');
+
 const okUser = (u) => ({
   id: String(u._id),
   name: u.name,
@@ -249,6 +263,102 @@ const validateUploadFileType = (file) => {
   return { ok: true };
 };
 
+const buildLinkedQuestionsForGrading = (assignment = {}, submission = {}) => {
+  if (Array.isArray(submission.linked_questions) && submission.linked_questions.length) {
+    return submission.linked_questions;
+  }
+
+  const answers = Array.isArray(submission.answers) ? submission.answers : [];
+  const answerMap = new Map(answers.map((a) => [idToString(a.question_id), a]));
+  const questions =
+    Array.isArray(assignment.questions) && assignment.questions.length
+      ? assignment.questions
+      : [
+          {
+            id: 1,
+            text: assignment.assignmentText || assignment.description || assignment.title || 'Question',
+            type: 'essay',
+            points: assignment.totalMark || 20,
+            model_answer: assignment.modelAnswerText || '',
+          },
+        ];
+
+  return questions.map((q, index) => {
+    const qid = q.id ?? index + 1;
+    const answer = answerMap.get(idToString(qid));
+    const studentAnswer =
+      answer?.answer || (questions.length === 1 ? submission.answerText || '' : 'na') || 'na';
+    return {
+      question_id: qid,
+      type: q.type || 'essay',
+      question: q.text || '',
+      options: Array.isArray(q.options) ? q.options : [],
+      student_answer: studentAnswer,
+      correct_answer: q.correct_answer || '',
+      model_answer: q.model_answer || q.modelAnswer || '',
+      max_score: q.points || assignment.totalMark || 1,
+      attempted: studentAnswer !== 'na' && studentAnswer !== 'unclear' && Boolean(String(studentAnswer).trim()),
+      needs_manual_review: studentAnswer === 'unclear',
+    };
+  });
+};
+
+const getCourseIdForPipeline = (assignment = {}) =>
+  assignment.course_id || assignment.courseId || assignment.course || assignment.subject || null;
+
+const normalizePercentValue = (value) => {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return null;
+  return value <= 1 ? Number((value * 100).toFixed(2)) : Number(value.toFixed(2));
+};
+
+const normalizeAiDetectionResult = (payload = {}) => {
+  const aiPercentage =
+    normalizePercentValue(payload.ai_percentage) ??
+    normalizePercentValue(payload.aiPercentage) ??
+    normalizePercentValue(payload.aiScore) ??
+    normalizePercentValue(payload.score) ??
+    0;
+  const humanPercentage =
+    normalizePercentValue(payload.human_percentage) ??
+    normalizePercentValue(payload.humanPercentage) ??
+    Number((100 - aiPercentage).toFixed(2));
+
+  return {
+    ...payload,
+    ai_percentage: aiPercentage,
+    human_percentage: humanPercentage,
+    decision: payload.decision || payload.prediction || (aiPercentage >= 70 ? 'rejected' : 'accepted'),
+  };
+};
+
+const normalizeGradingResult = (payload = {}) => {
+  const breakdown = Array.isArray(payload.grade_results)
+    ? payload.grade_results
+    : Array.isArray(payload.grades)
+      ? payload.grades
+      : Array.isArray(payload.results)
+        ? payload.results
+        : Array.isArray(payload.items)
+          ? payload.items
+          : [];
+  const totalScore =
+    typeof payload.total_score === 'number'
+      ? payload.total_score
+      : typeof payload.totalScore === 'number'
+        ? payload.totalScore
+        : typeof payload.score === 'number'
+          ? payload.score
+          : null;
+
+  return {
+    ...payload,
+    total_score: totalScore,
+    grade_results: breakdown,
+    feedback: payload.feedback || payload.justification || payload.summary || '',
+    grading_mode: payload.grading_mode || payload.gradingMode || payload.source || 'pipeline',
+  };
+};
+
 const runPipelineStepWithRetry = async ({ submissionId, stepName, fn, maxRetries }) => {
   let lastError = null;
   for (let attempt = 1; attempt <= maxRetries; attempt += 1) {
@@ -296,23 +406,15 @@ const runSubmissionPipeline = async ({ submissionId }) => {
     fn: async () => {
       const text = String(submission.answerText || '').trim();
       if (!text) return { ai_percentage: 0, decision: 'unknown' };
-      if (!aiDetectionUrl) return { ai_percentage: 0.12, decision: 'human_like', mock: true };
-      const resp = await fetch(aiDetectionUrl, {
+      if (!aiDetectionEndpoint) return { ai_percentage: 0.12, decision: 'human_like', mock: true };
+      const resp = await fetch(aiDetectionEndpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text }),
       });
       if (!resp.ok) throw new Error(`ai-detection failed with ${resp.status}`);
       const payload = await resp.json();
-      return {
-        ai_percentage:
-          typeof payload.aiScore === 'number'
-            ? Number((payload.aiScore * 100).toFixed(2))
-            : typeof payload.ai_percentage === 'number'
-              ? Number(payload.ai_percentage)
-              : 0,
-        decision: payload.prediction || payload.decision || 'unknown',
-      };
+      return normalizeAiDetectionResult(payload);
     },
   });
   steps.push({ step: 'ai-detection', ok: aiDetectionStep.ok, attempts: aiDetectionStep.attempts });
@@ -350,12 +452,12 @@ const runSubmissionPipeline = async ({ submissionId }) => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          assignment,
-          submission,
+          course_id: getCourseIdForPipeline(assignment),
+          linked_questions: buildLinkedQuestionsForGrading(assignment, submission),
         }),
       });
       if (!resp.ok) throw new Error(`grading failed with ${resp.status}`);
-      return resp.json();
+      return normalizeGradingResult(await resp.json());
     },
   });
   steps.push({ step: 'grading', ok: gradingStep.ok, attempts: gradingStep.attempts });
@@ -374,13 +476,8 @@ const runSubmissionPipeline = async ({ submissionId }) => {
     return;
   }
 
-  const grading = gradingStep.result || {};
-  const normalizedScore =
-    typeof grading.total_score === 'number'
-      ? grading.total_score
-      : typeof grading.score === 'number'
-        ? grading.score
-        : null;
+  const grading = normalizeGradingResult(gradingStep.result || {});
+  const normalizedScore = typeof grading.total_score === 'number' ? grading.total_score : null;
 
   await db.collection('submissions').updateOne(
     { _id },
@@ -390,9 +487,9 @@ const runSubmissionPipeline = async ({ submissionId }) => {
         ai_decision: aiDetectionStep.result.decision,
         score: normalizedScore,
         status: typeof normalizedScore === 'number' ? 'graded' : submission.status || 'submitted',
-        scoreBreakdown: Array.isArray(grading.grades) ? grading.grades : [],
-        feedback: grading.feedback || '',
-        gradingSource: grading.source || 'pipeline',
+        scoreBreakdown: grading.grade_results,
+        feedback: grading.feedback,
+        gradingSource: grading.grading_mode,
         pipelineStatus: 'completed',
         pipelineRetries: Math.max(aiDetectionStep.attempts, gradingStep.attempts),
         pipelineSteps: steps,
@@ -2883,9 +2980,9 @@ app.post(
       aiScore: Number(localScore.toFixed(2)),
     });
 
-    if (aiDetectionUrl) {
+    if (aiDetectionEndpoint) {
       try {
-        const response = await fetch(aiDetectionUrl, {
+        const response = await fetch(aiDetectionEndpoint, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ text }),
@@ -2902,8 +2999,8 @@ app.post(
         }
         return res.json({
           ok: true,
-          source: aiDetectionUrl,
-          ...payload,
+          source: aiDetectionEndpoint,
+          ...normalizeAiDetectionResult(payload),
         });
       } catch (err) {
         if (allowAiFallback) {
@@ -2912,7 +3009,7 @@ app.post(
         return res.status(502).json({
           message: 'AI detection service unavailable',
           details: err.message,
-          source: aiDetectionUrl,
+          source: aiDetectionEndpoint,
         });
       }
     }
@@ -2922,6 +3019,116 @@ app.post(
       degraded: false,
       source: 'local-mock',
     });
+  })
+);
+
+app.get(
+  '/grading/health',
+  auth,
+  allowRoles('doctor', 'admin'),
+  asyncRoute(async (_req, res) => {
+    if (!gradingApiUrl) {
+      return res.status(503).json({ message: 'GRADING_API_URL is not configured' });
+    }
+    try {
+      const response = await fetch(`${gradingApiUrl}/health`);
+      const payload = await response.json().catch(() => ({}));
+      return res.status(response.status).json(payload);
+    } catch (err) {
+      return res.status(502).json({ message: 'Grading service unavailable', details: err.message });
+    }
+  })
+);
+
+app.post(
+  '/grading/upload-material',
+  auth,
+  allowRoles('doctor', 'admin'),
+  upload.any(),
+  asyncRoute(async (req, res) => {
+    if (!gradingApiUrl) {
+      return res.status(503).json({ message: 'GRADING_API_URL is not configured' });
+    }
+    const files = (req.files || []).filter((f) => /^(files|file|material|materials)(\[\])?(\d+)?$/i.test(f.fieldname));
+    if (!files.length) {
+      return res.status(400).json({ message: "Missing files. Use form-data field 'files'." });
+    }
+    if (!req.body.course_id && !req.body.courseId) {
+      return res.status(400).json({ message: "Missing 'course_id'." });
+    }
+
+    const form = new FormData();
+    form.append('course_id', req.body.course_id || req.body.courseId);
+    for (const file of files) {
+      form.append('files', new Blob([file.buffer], { type: file.mimetype }), file.originalname);
+    }
+
+    try {
+      const response = await fetch(`${gradingApiUrl}/upload-material`, { method: 'POST', body: form });
+      const payload = await response.json().catch(() => ({}));
+      return res.status(response.status).json(payload);
+    } catch (err) {
+      return res.status(502).json({ message: 'Grading upload-material service unavailable', details: err.message });
+    }
+  })
+);
+
+app.post(
+  '/grading/upload-model-answer',
+  auth,
+  allowRoles('doctor', 'admin'),
+  upload.any(),
+  asyncRoute(async (req, res) => {
+    if (!gradingApiUrl) {
+      return res.status(503).json({ message: 'GRADING_API_URL is not configured' });
+    }
+    const file = pickUploadedFile(req.files);
+    if (!file) {
+      return res.status(400).json({ message: "Missing file. Use form-data field 'file'." });
+    }
+    if (!req.body.questions) {
+      return res.status(400).json({ message: "Missing 'questions' JSON string." });
+    }
+
+    const form = new FormData();
+    form.append('questions', req.body.questions);
+    form.append('file', new Blob([file.buffer], { type: file.mimetype }), file.originalname);
+
+    try {
+      const response = await fetch(`${gradingApiUrl}/upload-model-answer`, { method: 'POST', body: form });
+      const payload = await response.json().catch(() => ({}));
+      return res.status(response.status).json(payload);
+    } catch (err) {
+      return res.status(502).json({ message: 'Grading upload-model-answer service unavailable', details: err.message });
+    }
+  })
+);
+
+app.post(
+  '/grading/grade',
+  auth,
+  allowRoles('doctor', 'admin'),
+  asyncRoute(async (req, res) => {
+    if (!gradingApiUrl) {
+      return res.status(503).json({ message: 'GRADING_API_URL is not configured' });
+    }
+    if (!Array.isArray(req.body.linked_questions)) {
+      return res.status(400).json({ message: "'linked_questions' must be an array" });
+    }
+    try {
+      const response = await fetch(`${gradingApiUrl}/grade`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          course_id: req.body.course_id || req.body.courseId || req.body.course || null,
+          linked_questions: req.body.linked_questions,
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      return res.status(response.status).json(response.ok ? normalizeGradingResult(payload) : payload);
+    } catch (err) {
+      return res.status(502).json({ message: 'Grading service unavailable', details: err.message });
+    }
   })
 );
 

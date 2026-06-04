@@ -52,6 +52,10 @@
     {
       "key": "submissionId",
       "value": ""
+    },
+    {
+      "key": "aiDetectionBaseUrl",
+      "value": "https://tasnem11-fairmark-ai-detection.hf.space"
     }
   ],
   "item": [
@@ -1469,9 +1473,150 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('AI detection reachable', function () {",
+                  "pm.test('Backend AI detection reachable', function () {",
                   "  pm.expect([200, 502]).to.include(pm.response.code);",
+                  "});",
+                  "if (pm.response.code === 200) {",
+                  "  const json = pm.response.json();",
+                  "  pm.test('Backend uses Hugging Face AI service', function () {",
+                  "    pm.expect(json.source).to.eql(pm.collectionVariables.get('aiDetectionBaseUrl') + '/predict');",
+                  "  });",
+                  "  pm.test('Backend AI payload shape', function () {",
+                  "    pm.expect(json).to.have.property('human_percentage');",
+                  "    pm.expect(json).to.have.property('ai_percentage');",
+                  "    pm.expect(json).to.have.property('decision');",
+                  "  });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "09 - Grading Health",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{doctorToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/grading/health"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Grading health reachable or not configured', function () {",
+                  "  pm.expect([200, 404, 502, 503]).to.include(pm.response.code);",
                   "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "10 - Grading Sample",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{doctorToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"course_id\": \"AI\",\n  \"linked_questions\": [\n    {\n      \"question_id\": 1,\n      \"type\": \"short_answer\",\n      \"question\": \"What is artificial intelligence?\",\n      \"student_answer\": \"AI is the simulation of human intelligence by machines.\",\n      \"model_answer\": \"Artificial intelligence is the simulation of human intelligence processes by computer systems.\",\n      \"max_score\": 5,\n      \"attempted\": true\n    }\n  ]\n}"
+            },
+            "url": "{{baseUrl}}/grading/grade"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Grading sample reachable or not configured', function () {",
+                  "  pm.expect([200, 404, 502, 503]).to.include(pm.response.code);",
+                  "});",
+                  "if (pm.response.code === 200) {",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json).to.have.property('total_score');",
+                  "  pm.expect(json).to.have.property('grade_results');",
+                  "}"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "06 - AI Detection Service Direct",
+      "item": [
+        {
+          "name": "20 - AI Service Health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{aiDetectionBaseUrl}}/health"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('AI service health responds', function () { pm.expect([200, 503]).to.include(pm.response.code); });",
+                  "const json = pm.response.json();",
+                  "pm.test('AI health payload has model_loaded', function () { pm.expect(json).to.have.property('model_loaded'); });",
+                  "if (pm.response.code === 503) { console.log('AI model error:', json.error); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "21 - AI Service Predict",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"text\": \"Artificial intelligence is transforming education by helping students learn faster and giving teachers better tools for grading.\"\n}"
+            },
+            "url": "{{aiDetectionBaseUrl}}/predict"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('AI predict responds', function () { pm.expect([200, 503]).to.include(pm.response.code); });",
+                  "const json = pm.response.json();",
+                  "if (pm.response.code === 200) {",
+                  "  pm.test('AI predict payload', function () {",
+                  "    pm.expect(json).to.have.property('human_percentage');",
+                  "    pm.expect(json).to.have.property('ai_percentage');",
+                  "    pm.expect(json).to.have.property('decision');",
+                  "  });",
+                  "} else {",
+                  "  console.log('AI predict error:', json.error);",
+                  "}"
                 ]
               }
             }

@@ -3,7 +3,14 @@ const globals = require('globals');
 
 module.exports = [
   {
-    ignores: ['node_modules/**', '.venv/**', 'services/**/.venv/**'],
+    ignores: [
+      'node_modules/**',
+      '.venv/**',
+      '.venv311/**',
+      '**/__pycache__/**',
+      'services/**/.venv/**',
+      'services/**/.venv311/**',
+    ],
   },
   js.configs.recommended,
   {

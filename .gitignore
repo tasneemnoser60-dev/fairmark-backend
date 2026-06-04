@@ -1,7 +1,12 @@
 node_modules/
 .env
 .venv/
+*.venv/
+*.venv311/
 services/**/.venv/
+services/**/.venv311/
+__pycache__/
+services/**/__pycache__/
 *.log
 npm-debug.log*
 .DS_Store
@@ -9,3 +14,5 @@ Thumbs.db
 .ipynb_checkpoints/
 *.ipynb
 *.safetensors
+_incoming_models/
+services/AI_detection/fairmark_ai_detector_best/

@@ -33,6 +33,9 @@ Set a strong `JWT_SECRET` value before starting the server.
 AI Detection service:
 
 - `AI_DETECTION_URL` should point to the Flask service (default: `http://127.0.0.1:5000/predict`).
+- `VLM_API_URL` should point to the VLM Flask service root (default: `http://127.0.0.1:5001`).
+- `GRADING_API_URL` should point to the Grading Flask service root (default: `http://127.0.0.1:5003`).
+- `AI_MODEL_PATH` should point to the uploaded AI model folder on the AI Detection server or Railway Volume.
 - See "AI Detection Service" section below.
 
 3. Run the server:
@@ -141,7 +144,7 @@ Production checklist:
 
 The AI detector runs as a separate Flask service under `services/AI_detection`.
 
-From `services/AI_detection/AI_detection`:
+From `services/AI_detection`:
 
 ```bash
 python -m venv .venv
@@ -154,7 +157,13 @@ Then set:
 
 ```
 AI_DETECTION_URL=http://127.0.0.1:5000/predict
+VLM_API_URL=http://127.0.0.1:5001
+GRADING_API_URL=http://127.0.0.1:5003
+AI_MODEL_PATH=/data/fairmark_ai_detector_best
+AI_THRESHOLD=70
 ```
+
+The model weights are intentionally not committed to Git. Upload the model folder to the server/volume and make sure it contains `config.json` plus `model.safetensors` or `pytorch_model.bin`. If the folder is wrong, `GET /health` on the AI Detection service returns `503` with the exact missing-file error.
 
 ## Example curl Requests
 

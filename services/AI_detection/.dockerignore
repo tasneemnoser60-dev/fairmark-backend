@@ -1,0 +1,7 @@
+.venv/
+.venv311/
+__pycache__/
+.ipynb_checkpoints/
+*.ipynb
+*.log
+fairmark_ai_detector/
