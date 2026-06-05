@@ -7,7 +7,7 @@
   "variable": [
     {
       "key": "baseUrl",
-      "value": "https://fairmark-backend-production.up.railway.app"
+      "value": "https://fairmark-backend-production-60ca.up.railway.app"
     },
     {
       "key": "password",
@@ -317,6 +317,20 @@
                   "key": "file",
                   "type": "file",
                   "src": ""
+                },
+                {
+                  "key": "images",
+                  "type": "file",
+                  "src": "",
+                  "disabled": true,
+                  "description": "Optional extra image #1"
+                },
+                {
+                  "key": "images",
+                  "type": "file",
+                  "src": "",
+                  "disabled": true,
+                  "description": "Optional extra image #2"
                 }
               ]
             },
@@ -566,6 +580,20 @@
                   "key": "file",
                   "type": "file",
                   "src": ""
+                },
+                {
+                  "key": "images",
+                  "type": "file",
+                  "src": "",
+                  "disabled": true,
+                  "description": "Optional extra image #1"
+                },
+                {
+                  "key": "images",
+                  "type": "file",
+                  "src": "",
+                  "disabled": true,
+                  "description": "Optional extra image #2"
                 }
               ]
             },
@@ -644,6 +672,20 @@
                   "key": "answerText",
                   "value": "This is my answer",
                   "type": "text"
+                },
+                {
+                  "key": "images",
+                  "type": "file",
+                  "src": "",
+                  "disabled": true,
+                  "description": "Optional answer image #1"
+                },
+                {
+                  "key": "images",
+                  "type": "file",
+                  "src": "",
+                  "disabled": true,
+                  "description": "Optional answer image #2"
                 }
               ]
             },
@@ -1143,6 +1185,20 @@
                   "key": "file",
                   "type": "file",
                   "src": ""
+                },
+                {
+                  "key": "images",
+                  "type": "file",
+                  "src": "",
+                  "disabled": true,
+                  "description": "Optional extra image #1"
+                },
+                {
+                  "key": "images",
+                  "type": "file",
+                  "src": "",
+                  "disabled": true,
+                  "description": "Optional extra image #2"
                 }
               ]
             },
@@ -1177,6 +1233,20 @@
                   "key": "file",
                   "type": "file",
                   "src": ""
+                },
+                {
+                  "key": "images",
+                  "type": "file",
+                  "src": "",
+                  "disabled": true,
+                  "description": "Optional extra image #1"
+                },
+                {
+                  "key": "images",
+                  "type": "file",
+                  "src": "",
+                  "disabled": true,
+                  "description": "Optional extra image #2"
                 }
               ]
             },

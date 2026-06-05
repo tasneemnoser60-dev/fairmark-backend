@@ -208,6 +208,27 @@ const pickUploadedFile = (files = []) => {
   return preferred || files[0] || null;
 };
 
+const pickUploadedFiles = (files = []) => {
+  if (!Array.isArray(files) || files.length === 0) return [];
+  const preferred = files.filter((f) => /^(file|image|images)(\[\])?(\d+)?$/i.test(f.fieldname));
+  return preferred.length ? preferred : files;
+};
+
+const fileMetadata = (file) => ({
+  originalName: file.originalname,
+  mimeType: file.mimetype,
+  size: file.size,
+});
+
+const validateUploadFiles = (files = []) => {
+  if (!files.length) return { ok: false, message: 'Missing upload file' };
+  for (const file of files) {
+    const validType = validateUploadFileType(file);
+    if (!validType.ok) return validType;
+  }
+  return { ok: true };
+};
+
 const ensureDoctorAssignmentAccess = (assignment, user) => {
   if (!assignment) return { ok: false, status: 404, message: 'Assignment not found' };
   if (user.role === 'admin') return { ok: true };
@@ -681,7 +702,8 @@ const createAssignmentHandler = asyncRoute(async (req, res) => {
     if (req.user.role === 'doctor' && actorCourses.length > 0 && course && !actorCourses.includes(course)) {
       return res.status(403).json({ message: 'Doctor can create assignments only for own courses' });
     }
-    const uploaded = pickUploadedFile(req.files);
+    const uploadedFiles = pickUploadedFiles(req.files);
+    const uploaded = uploadedFiles[0] || null;
     const assignmentTextRaw = String(
       req.body.assignmentText ?? req.body.assignment ?? req.body.text ?? ''
     ).trim();
@@ -695,12 +717,14 @@ const createAssignmentHandler = asyncRoute(async (req, res) => {
       assignmentText,
       modelAnswer: uploaded
         ? {
-            originalName: uploaded.originalname,
-            mimeType: uploaded.mimetype,
-            size: uploaded.size,
+            ...fileMetadata(uploaded),
             uploadedAt: now,
           }
         : null,
+      modelAnswerFiles: uploadedFiles.map((file) => ({
+        ...fileMetadata(file),
+        uploadedAt: now,
+      })),
       createdAt: now,
       updatedAt: now,
     };
@@ -739,7 +763,8 @@ const createExamHandler = asyncRoute(async (req, res) => {
   if (req.user.role === 'doctor' && actorCourses.length > 0 && course && !actorCourses.includes(course)) {
     return res.status(403).json({ message: 'Doctor can create exams only for own courses' });
   }
-  const uploaded = pickUploadedFile(req.files);
+  const uploadedFiles = pickUploadedFiles(req.files);
+  const uploaded = uploadedFiles[0] || null;
   const assignmentTextRaw = String(
     req.body.assignmentText ?? req.body.assignment ?? req.body.text ?? ''
   ).trim();
@@ -755,12 +780,14 @@ const createExamHandler = asyncRoute(async (req, res) => {
     assignmentText,
     modelAnswer: uploaded
       ? {
-          originalName: uploaded.originalname,
-          mimeType: uploaded.mimetype,
-          size: uploaded.size,
+          ...fileMetadata(uploaded),
           uploadedAt: now,
         }
       : null,
+    modelAnswerFiles: uploadedFiles.map((file) => ({
+      ...fileMetadata(file),
+      uploadedAt: now,
+    })),
     createdAt: now,
     updatedAt: now,
   };
@@ -973,29 +1000,39 @@ const uploadModelAnswerHandler = asyncRoute(async (req, res) => {
     if (!current) return res.status(404).json({ message: 'Assignment not found' });
     const access = ensureDoctorAssignmentAccess(current, req.user);
     if (!access.ok) return res.status(access.status).json({ message: access.message });
-    const uploaded = pickUploadedFile(req.files);
-    if (!uploaded) {
+    const uploadedFiles = pickUploadedFiles(req.files);
+    const uploaded = uploadedFiles[0] || null;
+    if (!uploadedFiles.length) {
       return res.status(400).json({
-        message: "Missing upload. Provide model answer file in form-data field 'file' (also accepted: 'image' or 'images').",
+        message: "Missing upload. Provide one or more model answer files in form-data field 'files'/'images' (also accepted: 'file' or 'image').",
       });
     }
+    const validType = validateUploadFiles(uploadedFiles);
+    if (!validType.ok) return res.status(400).json({ message: validType.message });
 
     await db.collection('assignments').updateOne(
       { _id },
       {
         $set: {
           modelAnswer: {
-            originalName: uploaded.originalname,
-            mimeType: uploaded.mimetype,
-            size: uploaded.size,
+            ...fileMetadata(uploaded),
             uploadedAt: new Date(),
           },
+          modelAnswerFiles: uploadedFiles.map((file) => ({
+            ...fileMetadata(file),
+            uploadedAt: new Date(),
+          })),
           updatedAt: new Date(),
         },
       }
     );
 
-    return res.json({ ok: true, file: uploaded.originalname });
+    return res.json({
+      ok: true,
+      file: uploaded.originalname,
+      files: uploadedFiles.map(fileMetadata),
+      count: uploadedFiles.length,
+    });
   });
 
 app.post(
@@ -1012,8 +1049,9 @@ app.post(
     const access = ensureDoctorAssignmentAccess(assignment, req.user);
     if (!access.ok) return res.status(access.status).json({ message: access.message });
 
-    const uploaded = pickUploadedFile(req.files);
-    const validType = validateUploadFileType(uploaded);
+    const uploadedFiles = pickUploadedFiles(req.files);
+    const uploaded = uploadedFiles[0] || null;
+    const validType = validateUploadFiles(uploadedFiles);
     if (!validType.ok) return res.status(400).json({ message: validType.message });
 
     await db.collection('assignments').updateOne(
@@ -1021,11 +1059,13 @@ app.post(
       {
         $set: {
           examFile: {
-            originalName: uploaded.originalname,
-            mimeType: uploaded.mimetype,
-            size: uploaded.size,
+            ...fileMetadata(uploaded),
             uploadedAt: new Date(),
           },
+          examFiles: uploadedFiles.map((file) => ({
+            ...fileMetadata(file),
+            uploadedAt: new Date(),
+          })),
           updatedAt: new Date(),
         },
       }
@@ -1036,10 +1076,10 @@ app.post(
       assignment_id: idToString(_id),
       file_url: null,
       file: {
-        originalName: uploaded.originalname,
-        mimeType: uploaded.mimetype,
-        size: uploaded.size,
+        ...fileMetadata(uploaded),
       },
+      files: uploadedFiles.map(fileMetadata),
+      count: uploadedFiles.length,
     });
   })
 );
@@ -1058,8 +1098,9 @@ app.post(
     if (!access.ok) return res.status(access.status).json({ message: access.message });
     if (!isExamAssignment(assignment)) return res.status(404).json({ message: 'Exam not found' });
 
-    const uploaded = pickUploadedFile(req.files);
-    const validType = validateUploadFileType(uploaded);
+    const uploadedFiles = pickUploadedFiles(req.files);
+    const uploaded = uploadedFiles[0] || null;
+    const validType = validateUploadFiles(uploadedFiles);
     if (!validType.ok) return res.status(400).json({ message: validType.message });
 
     await db.collection('assignments').updateOne(
@@ -1067,11 +1108,13 @@ app.post(
       {
         $set: {
           examFile: {
-            originalName: uploaded.originalname,
-            mimeType: uploaded.mimetype,
-            size: uploaded.size,
+            ...fileMetadata(uploaded),
             uploadedAt: new Date(),
           },
+          examFiles: uploadedFiles.map((file) => ({
+            ...fileMetadata(file),
+            uploadedAt: new Date(),
+          })),
           updatedAt: new Date(),
         },
       }
@@ -1083,10 +1126,10 @@ app.post(
       assignmentId: idToString(_id),
       file_url: null,
       file: {
-        originalName: uploaded.originalname,
-        mimeType: uploaded.mimetype,
-        size: uploaded.size,
+        ...fileMetadata(uploaded),
       },
+      files: uploadedFiles.map(fileMetadata),
+      count: uploadedFiles.length,
     });
   })
 );
@@ -1148,9 +1191,10 @@ app.post(
 
     const now = new Date();
     const studentObjectId = parseObjectId(req.user.id);
-    const uploaded = (req.files || []).find((f) => ['file', 'image', 'images'].includes(f.fieldname));
-    if (uploaded) {
-      const validType = validateUploadFileType(uploaded);
+    const uploadedFiles = pickUploadedFiles(req.files);
+    const uploaded = uploadedFiles[0] || null;
+    if (uploadedFiles.length) {
+      const validType = validateUploadFiles(uploadedFiles);
       if (!validType.ok) return res.status(400).json({ message: validType.message });
     }
     const existingSubmission = await db.collection('submissions').findOne({
@@ -1166,10 +1210,9 @@ app.post(
       };
       if (uploaded) {
         updateFields.file = {
-          originalName: uploaded.originalname,
-          mimeType: uploaded.mimetype,
-          size: uploaded.size,
+          ...fileMetadata(uploaded),
         };
+        updateFields.files = uploadedFiles.map(fileMetadata);
       }
       await db.collection('submissions').updateOne({ _id: existingSubmission._id }, { $set: updateFields });
       const updated = await db.collection('submissions').findOne({ _id: existingSubmission._id });
@@ -1192,11 +1235,10 @@ app.post(
       score: null,
       file: uploaded
         ? {
-            originalName: uploaded.originalname,
-            mimeType: uploaded.mimetype,
-            size: uploaded.size,
+            ...fileMetadata(uploaded),
           }
         : null,
+      files: uploadedFiles.map(fileMetadata),
       createdAt: now,
       updatedAt: now,
     };
@@ -2650,9 +2692,14 @@ app.post(
     if (Number.isNaN(questionId)) return res.status(400).json({ message: 'Invalid question id' });
 
     const answerText = String(req.body.answer || req.body.answerText || '').trim();
-    const uploaded = pickUploadedFile(req.files);
-    if (!answerText && !uploaded) {
+    const uploadedFiles = pickUploadedFiles(req.files);
+    const uploaded = uploadedFiles[0] || null;
+    if (!answerText && !uploadedFiles.length) {
       return res.status(400).json({ message: 'Provide answer text or upload a supporting file' });
+    }
+    if (uploadedFiles.length) {
+      const validType = validateUploadFiles(uploadedFiles);
+      if (!validType.ok) return res.status(400).json({ message: validType.message });
     }
 
     const studentFilter = { studentId: { $in: userIdAlternatives(req.user.id) }, assignmentId };
@@ -2664,11 +2711,12 @@ app.post(
       answer: answerText,
       file: uploaded
         ? {
-            originalName: uploaded.originalname,
-            mimeType: uploaded.mimetype,
-            size: uploaded.size,
+            ...fileMetadata(uploaded),
           }
         : (idx >= 0 ? answers[idx].file || null : null),
+      files: uploadedFiles.length
+        ? uploadedFiles.map(fileMetadata)
+        : (idx >= 0 ? answers[idx].files || [] : []),
       updatedAt: new Date(),
     };
     if (idx >= 0) answers[idx] = { ...answers[idx], ...nextAnswer };
