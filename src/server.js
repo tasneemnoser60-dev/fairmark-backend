@@ -380,6 +380,123 @@ const normalizeGradingResult = (payload = {}) => {
   };
 };
 
+const firstFiniteNumber = (...values) => {
+  for (const value of values) {
+    const num = typeof value === 'number' ? value : Number(value);
+    if (Number.isFinite(num)) return num;
+  }
+  return null;
+};
+
+const normalizeSimilarityValue = (value) => {
+  const num = firstFiniteNumber(value);
+  if (num === null) return null;
+  return normalizePercentValue(num);
+};
+
+const getQuestionResultKey = (item = {}) =>
+  idToString(
+    item.question_id ??
+      item.questionId ??
+      item.question_number ??
+      item.questionNumber ??
+      item.id ??
+      item.qid
+  );
+
+const getItemScore = (item = {}) =>
+  firstFiniteNumber(
+    item.score,
+    item.awarded_score,
+    item.awardedScore,
+    item.grade,
+    item.mark,
+    item.marks
+  );
+
+const getItemSimilarity = (item = {}) =>
+  normalizeSimilarityValue(
+    item.similarity ??
+      item.similarity_score ??
+      item.similarityScore ??
+      item.semantic_similarity ??
+      item.semanticSimilarity ??
+      item.match_percentage ??
+      item.matchPercentage
+  );
+
+const getSubmissionScore = (submission) => {
+  if (!submission) return null;
+  const directScore = firstFiniteNumber(submission.score, submission.total_score, submission.totalScore);
+  if (directScore !== null) return directScore;
+  const breakdown = Array.isArray(submission.scoreBreakdown) ? submission.scoreBreakdown : [];
+  const scores = breakdown.map(getItemScore).filter((v) => v !== null);
+  return scores.length ? Number(scores.reduce((sum, v) => sum + v, 0).toFixed(2)) : null;
+};
+
+const getSubmissionSimilarity = (submission) => {
+  if (!submission) return null;
+  const directSimilarity = getItemSimilarity(submission);
+  if (directSimilarity !== null) return directSimilarity;
+  const candidates = [
+    ...(Array.isArray(submission.answers) ? submission.answers : []),
+    ...(Array.isArray(submission.scoreBreakdown) ? submission.scoreBreakdown : []),
+  ];
+  const values = candidates.map(getItemSimilarity).filter((v) => v !== null);
+  if (!values.length) return null;
+  return Number((values.reduce((sum, v) => sum + v, 0) / values.length).toFixed(2));
+};
+
+const buildQuestionReviewItems = ({ assignment = {}, submission = {} }) => {
+  const questions = Array.isArray(assignment?.questions) && assignment.questions.length
+    ? assignment.questions
+    : [
+        {
+          id: 1,
+          text: assignment?.assignmentText || assignment?.description || 'Question',
+          points: assignment?.totalMark || null,
+        },
+      ];
+  const answers = Array.isArray(submission.answers) && submission.answers.length
+    ? submission.answers
+    : [
+        {
+          question_id: 1,
+          answer: submission.answerText || '',
+          score: getSubmissionScore(submission),
+          similarity: getSubmissionSimilarity(submission),
+        },
+      ];
+  const breakdown = Array.isArray(submission.scoreBreakdown) ? submission.scoreBreakdown : [];
+  const byAnswerQ = new Map(answers.map((a) => [getQuestionResultKey(a), a]));
+  const byBreakdownQ = new Map(breakdown.map((b) => [getQuestionResultKey(b), b]));
+
+  return questions.map((q, index) => {
+    const key = idToString(q.id ?? q.question_id ?? index + 1);
+    const answer = byAnswerQ.get(key) || byAnswerQ.get(idToString(index + 1)) || answers[index] || null;
+    const result = byBreakdownQ.get(key) || byBreakdownQ.get(idToString(index + 1)) || breakdown[index] || {};
+    const score = getItemScore(answer || {}) ?? getItemScore(result);
+    const similarity = getItemSimilarity(answer || {}) ?? getItemSimilarity(result);
+    const studentAnswer = answer?.answer || answer?.studentAnswer || answer?.text || '';
+    return {
+      questionId: q.id ?? q.question_id ?? index + 1,
+      question: q.text || q.question || '',
+      studentAnswer,
+      answer: studentAnswer,
+      score,
+      similarity,
+      feedback: answer?.feedback || result.feedback || result.reasoning || '',
+      maxScore: firstFiniteNumber(q.points, q.mark, q.marks, result.outOf, result.max_score, result.maxScore),
+      status:
+        score !== null
+          ? 'ai_graded'
+          : similarity !== null
+            ? 'similarity_checked'
+            : 'submitted',
+    };
+  });
+};
+
 const runPipelineStepWithRetry = async ({ submissionId, stepName, fn, maxRetries }) => {
   let lastError = null;
   for (let attempt = 1; attempt <= maxRetries; attempt += 1) {
@@ -1531,12 +1648,16 @@ app.get(
     const items = assignments.map((a) => {
       const sub = byAssignment.get(idToString(a._id));
       const status = mapStudentAssignmentStatus(sub);
+      const score = getSubmissionScore(sub);
+      const similarity = getSubmissionSimilarity(sub);
       return {
         assignmentId: idToString(a._id),
         title: a.title || 'Untitled assignment',
         dueDate: a.dueDate,
         totalMark: a.totalMark ?? null,
         status,
+        score,
+        similarity,
         action: status === 'not_submitted' ? 'submit_answer' : 'view_submission',
       };
     });
@@ -1569,12 +1690,16 @@ app.get('/api/student/assignments', auth, allowRoles('student'), asyncRoute(asyn
   const items = assignments.map((a) => {
     const sub = byAssignment.get(idToString(a._id));
     const status = mapStudentAssignmentStatus(sub);
+    const score = getSubmissionScore(sub);
+    const similarity = getSubmissionSimilarity(sub);
     return {
       assignmentId: idToString(a._id),
       title: a.title || 'Untitled assignment',
       dueDate: a.dueDate,
       totalMark: a.totalMark ?? null,
       status,
+      score,
+      similarity,
       action: status === 'not_submitted' ? 'submit_answer' : 'view_submission',
     };
   });
@@ -1620,6 +1745,8 @@ app.get(
     const items = assignments.map((a) => {
       const sub = byAssignment.get(idToString(a._id));
       const status = mapStudentExamStatus(sub);
+      const score = getSubmissionScore(sub);
+      const similarity = getSubmissionSimilarity(sub);
       const action =
         status === 'not_started' ? 'start_exam' : status === 'in_progress' ? 'continue_exam' : 'view_result';
       return {
@@ -1627,7 +1754,10 @@ app.get(
         assignmentId: idToString(a._id),
         title: a.title || 'Untitled exam',
         dueDate: a.dueDate,
+        totalMark: a.totalMark ?? null,
         status,
+        score,
+        similarity,
         action,
       };
     });
@@ -1701,8 +1831,9 @@ app.get(
       return res.status(403).json({ message: 'Result not published yet' });
     }
     const totalMark = Number(assignment?.totalMark ?? 100);
-    const score = typeof submission.score === 'number' ? submission.score : 0;
+    const score = getSubmissionScore(submission) ?? 0;
     const percent = totalMark > 0 ? (score / totalMark) * 100 : 0;
+    const similarity = getSubmissionSimilarity(submission);
 
     const scoreBreakdown = Array.isArray(submission.scoreBreakdown) && submission.scoreBreakdown.length
       ? submission.scoreBreakdown
@@ -1721,8 +1852,10 @@ app.get(
       score,
       totalMark,
       percentage: Number(percent.toFixed(2)),
+      similarity,
       status: percent >= 50 ? 'passed' : 'failed',
       scoreBreakdown,
+      items: buildQuestionReviewItems({ assignment, submission }),
     });
   })
 );
@@ -1750,40 +1883,14 @@ app.get(
       return res.status(403).json({ message: 'Result not published yet' });
     }
 
-    const questions = Array.isArray(assignment?.questions) && assignment.questions.length
-      ? assignment.questions
-      : [
-          {
-            id: 1,
-            text: assignment?.assignmentText || assignment?.description || 'Question',
-          },
-        ];
-
-    const answers = Array.isArray(submission.answers) && submission.answers.length
-      ? submission.answers
-      : [
-          {
-            question_id: 1,
-            answer: submission.answerText || '',
-          },
-        ];
-
-    const byQ = new Map(answers.map((a) => [idToString(a.question_id), a]));
-    const reviewItems = questions.map((q) => {
-      const a = byQ.get(idToString(q.id));
-      return {
-        questionId: q.id,
-        question: q.text || '',
-        answer: a?.answer || '',
-        similarity: typeof a?.similarity === 'number' ? a.similarity : null,
-        score: typeof a?.score === 'number' ? a.score : null,
-      };
-    });
+    const reviewItems = buildQuestionReviewItems({ assignment, submission });
 
     return res.json({
       submissionId: idToString(submission._id),
       assignmentId: idToString(submission.assignmentId),
       title: submission.assignmentTitle || assignment?.title || 'Untitled',
+      score: getSubmissionScore(submission),
+      similarity: getSubmissionSimilarity(submission),
       items: reviewItems,
     });
   })
