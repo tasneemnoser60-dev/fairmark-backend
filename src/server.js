@@ -1003,8 +1003,10 @@ const uploadModelAnswerHandler = asyncRoute(async (req, res) => {
     const uploadedFiles = pickUploadedFiles(req.files);
     const uploaded = uploadedFiles[0] || null;
     if (!uploadedFiles.length) {
-      return res.status(400).json({
-        message: "Missing upload. Provide one or more model answer files in form-data field 'files'/'images' (also accepted: 'file' or 'image').",
+      return res.json({
+        ok: true,
+        skipped: true,
+        message: 'Model answer is optional, so upload was skipped because no file was provided.',
       });
     }
     const validType = validateUploadFiles(uploadedFiles);
@@ -3132,7 +3134,11 @@ app.post(
     }
     const file = pickUploadedFile(req.files);
     if (!file) {
-      return res.status(400).json({ message: "Missing file. Use form-data field 'file'." });
+      return res.json({
+        ok: true,
+        skipped: true,
+        message: 'Model answer is optional, so grading model-answer upload was skipped because no file was provided.',
+      });
     }
     if (!req.body.questions) {
       return res.status(400).json({ message: "Missing 'questions' JSON string." });

@@ -316,7 +316,9 @@
                 {
                   "key": "file",
                   "type": "file",
-                  "src": ""
+                  "src": "",
+                  "disabled": true,
+                  "description": "Optional model answer file. Enable this row and select a file if needed."
                 },
                 {
                   "key": "images",
@@ -342,8 +344,8 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('Upload model answer returns 200/400', function () {",
-                  "  pm.expect([200, 400]).to.include(pm.response.code);",
+                  "pm.test('Upload model answer is optional', function () {",
+                  "  pm.expect(pm.response.code).to.eql(200);",
                   "});"
                 ]
               }
@@ -1184,7 +1186,9 @@
                 {
                   "key": "file",
                   "type": "file",
-                  "src": ""
+                  "src": "",
+                  "disabled": true,
+                  "description": "Optional model answer file. Enable this row and select a file if needed."
                 },
                 {
                   "key": "images",
@@ -1210,7 +1214,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('Upload exam model answer returns 200/400', function () { pm.expect([200,400]).to.include(pm.response.code); });"
+                  "pm.test('Upload exam model answer is optional', function () { pm.expect(pm.response.code).to.eql(200); });"
                 ]
               }
             }
