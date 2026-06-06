@@ -1647,18 +1647,21 @@ app.get(
 
     const items = assignments.map((a) => {
       const sub = byAssignment.get(idToString(a._id));
-      const status = mapStudentAssignmentStatus(sub);
-      const score = getSubmissionScore(sub);
-      const similarity = getSubmissionSimilarity(sub);
+      const published = isPublishedForStudents(a);
+      const rawStatus = mapStudentAssignmentStatus(sub);
+      const status = published || rawStatus === 'not_submitted' ? rawStatus : 'submitted';
+      const score = published ? getSubmissionScore(sub) : null;
+      const similarity = published ? getSubmissionSimilarity(sub) : null;
       return {
         assignmentId: idToString(a._id),
         title: a.title || 'Untitled assignment',
         dueDate: a.dueDate,
         totalMark: a.totalMark ?? null,
+        resultsPublished: published,
         status,
         score,
         similarity,
-        action: status === 'not_submitted' ? 'submit_answer' : 'view_submission',
+        action: status === 'not_submitted' ? 'submit_answer' : published ? 'view_submission' : 'await_results',
       };
     });
 
@@ -1689,18 +1692,21 @@ app.get('/api/student/assignments', auth, allowRoles('student'), asyncRoute(asyn
   const byAssignment = new Map(submissions.map((s) => [idToString(s.assignmentId), s]));
   const items = assignments.map((a) => {
     const sub = byAssignment.get(idToString(a._id));
-    const status = mapStudentAssignmentStatus(sub);
-    const score = getSubmissionScore(sub);
-    const similarity = getSubmissionSimilarity(sub);
+    const published = isPublishedForStudents(a);
+    const rawStatus = mapStudentAssignmentStatus(sub);
+    const status = published || rawStatus === 'not_submitted' ? rawStatus : 'submitted';
+    const score = published ? getSubmissionScore(sub) : null;
+    const similarity = published ? getSubmissionSimilarity(sub) : null;
     return {
       assignmentId: idToString(a._id),
       title: a.title || 'Untitled assignment',
       dueDate: a.dueDate,
       totalMark: a.totalMark ?? null,
+      resultsPublished: published,
       status,
       score,
       similarity,
-      action: status === 'not_submitted' ? 'submit_answer' : 'view_submission',
+      action: status === 'not_submitted' ? 'submit_answer' : published ? 'view_submission' : 'await_results',
     };
   });
   return res.json({ items });
@@ -1744,17 +1750,24 @@ app.get(
 
     const items = assignments.map((a) => {
       const sub = byAssignment.get(idToString(a._id));
-      const status = mapStudentExamStatus(sub);
-      const score = getSubmissionScore(sub);
-      const similarity = getSubmissionSimilarity(sub);
+      const published = isPublishedForStudents(a);
+      const rawStatus = mapStudentExamStatus(sub);
+      const status = published || rawStatus === 'not_started' ? rawStatus : 'submitted';
+      const score = published ? getSubmissionScore(sub) : null;
+      const similarity = published ? getSubmissionSimilarity(sub) : null;
       const action =
-        status === 'not_started' ? 'start_exam' : status === 'in_progress' ? 'continue_exam' : 'view_result';
+        status === 'not_started'
+          ? 'start_exam'
+          : published
+            ? 'view_result'
+            : 'await_results';
       return {
         examId: idToString(a._id),
         assignmentId: idToString(a._id),
         title: a.title || 'Untitled exam',
         dueDate: a.dueDate,
         totalMark: a.totalMark ?? null,
+        resultsPublished: published,
         status,
         score,
         similarity,
