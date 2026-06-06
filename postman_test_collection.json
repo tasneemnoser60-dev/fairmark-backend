@@ -418,7 +418,15 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('Doctor assignment submissions success', function () { pm.expect(pm.response.code).to.eql(200); });"
+                  "pm.test('Doctor assignment submissions success', function () { pm.expect(pm.response.code).to.eql(200); });",
+                  "const json = pm.response.json();",
+                  "const first = (json.items || [])[0];",
+                  "if (first) {",
+                  "  pm.test('Doctor assignment submission exposes score/similarity', function () {",
+                  "    pm.expect(first).to.have.property('score');",
+                  "    pm.expect(first).to.have.property('similarity');",
+                  "  });",
+                  "}"
                 ]
               }
             }
@@ -744,6 +752,37 @@
           ]
         },
         {
+          "name": "07b - Doctor Submission Review Metrics",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{doctorToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/doctor/submissions/{{submissionId}}/review"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Doctor submission review success', function () { pm.expect(pm.response.code).to.eql(200); });",
+                  "const json = pm.response.json();",
+                  "const first = (json.items || [])[0];",
+                  "pm.test('Doctor submission review exposes score/similarity', function () {",
+                  "  pm.expect(first).to.be.an('object');",
+                  "  pm.expect(first).to.have.property('score');",
+                  "  pm.expect(first).to.have.property('similarity');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
           "name": "10 - Student Dashboard",
           "request": {
             "method": "GET",
@@ -785,7 +824,15 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('Student assignments success', function () { pm.expect(pm.response.code).to.eql(200); });"
+                  "pm.test('Student assignments success', function () { pm.expect(pm.response.code).to.eql(200); });",
+                  "const json = pm.response.json();",
+                  "const first = (json.items || [])[0];",
+                  "if (first) {",
+                  "  pm.test('Student assignment exposes score/similarity', function () {",
+                  "    pm.expect(first).to.have.property('score');",
+                  "    pm.expect(first).to.have.property('similarity');",
+                  "  });",
+                  "}"
                 ]
               }
             }
@@ -809,7 +856,15 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('Student exams success', function () { pm.expect(pm.response.code).to.eql(200); });"
+                  "pm.test('Student exams success', function () { pm.expect(pm.response.code).to.eql(200); });",
+                  "const json = pm.response.json();",
+                  "const first = (json.items || [])[0];",
+                  "if (first) {",
+                  "  pm.test('Student exam exposes score/similarity', function () {",
+                  "    pm.expect(first).to.have.property('score');",
+                  "    pm.expect(first).to.have.property('similarity');",
+                  "  });",
+                  "}"
                 ]
               }
             }
@@ -1062,7 +1117,15 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('Doctor exam submissions success', function () { pm.expect(pm.response.code).to.eql(200); });"
+                  "pm.test('Doctor exam submissions success', function () { pm.expect(pm.response.code).to.eql(200); });",
+                  "const json = pm.response.json();",
+                  "const first = (json.items || [])[0];",
+                  "if (first) {",
+                  "  pm.test('Doctor exam submission exposes score/similarity', function () {",
+                  "    pm.expect(first).to.have.property('score');",
+                  "    pm.expect(first).to.have.property('similarity');",
+                  "  });",
+                  "}"
                 ]
               }
             }
