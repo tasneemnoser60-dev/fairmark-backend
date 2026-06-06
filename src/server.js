@@ -2099,21 +2099,8 @@ app.get(
       studentName: s.studentName || s.studentEmail || 'Student',
       studentEmail: s.studentEmail || '',
       status: s.status === 'graded' ? 'ai_graded' : s.status === 'submitted' ? 'submitted' : s.status,
-      score: typeof s.score === 'number' ? s.score : null,
-      similarity:
-        typeof s.similarity === 'number'
-          ? s.similarity
-          : Array.isArray(s.answers)
-            ? Number(
-                (
-                  s.answers
-                    .map((a) => (typeof a.similarity === 'number' ? a.similarity : null))
-                    .filter((v) => v !== null)
-                    .reduce((acc, cur) => acc + cur, 0) /
-                  (s.answers.filter((a) => typeof a.similarity === 'number').length || 1)
-                ).toFixed(2)
-              )
-            : null,
+      score: getSubmissionScore(s),
+      similarity: getSubmissionSimilarity(s),
       action: 'review_submission',
     }));
 
@@ -2263,7 +2250,8 @@ app.get(
       studentName: s.studentName || s.studentEmail || 'Student',
       studentEmail: s.studentEmail || '',
       status: s.status === 'graded' ? 'ai_graded' : s.status === 'submitted' ? 'submitted' : s.status,
-      score: typeof s.score === 'number' ? s.score : null,
+      score: getSubmissionScore(s),
+      similarity: getSubmissionSimilarity(s),
       action: 'review_submission',
     }));
 
@@ -2304,42 +2292,7 @@ app.get(
     const access = ensureDoctorAssignmentAccess(assignment, req.user);
     if (!access.ok) return res.status(access.status).json({ message: access.message });
 
-    const questions = Array.isArray(assignment?.questions) && assignment.questions.length
-      ? assignment.questions
-      : [
-          {
-            id: 1,
-            text: assignment?.assignmentText || assignment?.description || 'Question',
-            points: assignment?.totalMark || 1,
-          },
-        ];
-    const answers = Array.isArray(submission.answers) && submission.answers.length
-      ? submission.answers
-      : [
-          {
-            question_id: 1,
-            answer: submission.answerText || '',
-            score: typeof submission.score === 'number' ? submission.score : null,
-            similarity: typeof submission.similarity === 'number' ? submission.similarity : null,
-          },
-        ];
-    const byQ = new Map(answers.map((a) => [idToString(a.question_id), a]));
-    const items = questions.map((q) => {
-      const a = byQ.get(idToString(q.id));
-      return {
-        questionId: q.id,
-        question: q.text || '',
-        studentAnswer: a?.answer || '',
-        score: typeof a?.score === 'number' ? a.score : null,
-        similarity: typeof a?.similarity === 'number' ? a.similarity : null,
-        status:
-          typeof a?.score === 'number'
-            ? 'ai_graded'
-            : typeof a?.similarity === 'number'
-              ? 'similarity_checked'
-              : 'submitted',
-      };
-    });
+    const items = buildQuestionReviewItems({ assignment, submission });
 
     return res.json({
       submissionId: idToString(submission._id),
@@ -2350,7 +2303,8 @@ app.get(
         name: submission.studentName || submission.studentEmail || 'Student',
         email: submission.studentEmail || '',
       },
-      score: typeof submission.score === 'number' ? submission.score : null,
+      score: getSubmissionScore(submission),
+      similarity: getSubmissionSimilarity(submission),
       status: submission.status || 'submitted',
       items,
     });
