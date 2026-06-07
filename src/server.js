@@ -313,17 +313,7 @@ const buildLinkedQuestionsForGrading = (assignment = {}, submission = {}, option
   const answers = Array.isArray(submission.answers) ? submission.answers : [];
   const answerMap = new Map(answers.map((a) => [idToString(a.question_id), a]));
   const questions =
-    Array.isArray(assignment.questions) && assignment.questions.length
-      ? assignment.questions
-      : [
-          {
-            id: 1,
-            text: assignment.assignmentText || assignment.description || assignment.title || 'Question',
-            type: 'essay',
-            points: assignment.totalMark || 20,
-            model_answer: assignment.modelAnswerText || '',
-          },
-        ];
+    Array.isArray(assignment.questions) && assignment.questions.length ? assignment.questions : [];
 
   return questions.map((q, index) => {
     const qid = q.id ?? index + 1;
@@ -802,6 +792,7 @@ const runSubmissionPipeline = async ({ submissionId, uploadedFiles = [] }) => {
       );
     }
   } else {
+    const missingQuestions = Boolean(uploadedFiles.length && !assignmentQuestions.length);
     steps.push({
       step: 'vlm',
       ok: false,
@@ -812,6 +803,22 @@ const runSubmissionPipeline = async ({ submissionId, uploadedFiles = [] }) => {
           ? 'no_submission_images'
           : 'no_assignment_questions',
     });
+    if (missingQuestions) {
+      await db.collection('submissions').updateOne(
+        { _id },
+        {
+          $set: {
+            status: 'needs_exam_questions',
+            pipelineStatus: 'failed',
+            pipelineError:
+              'ASSIGNMENT_QUESTIONS_REQUIRED: Upload the assignment/exam paper first so VLM can extract questions before grading.',
+            pipelineSteps: steps,
+            pipelineUpdatedAt: new Date(),
+          },
+        }
+      );
+      return;
+    }
   }
 
   const aiDetectionStep = await runPipelineStepWithRetry({
@@ -860,6 +867,9 @@ const runSubmissionPipeline = async ({ submissionId, uploadedFiles = [] }) => {
       const linkedQuestions = buildLinkedQuestionsForGrading(assignment, pipelineSubmission, {
         materials: materialSummary,
       });
+      if (!linkedQuestions.length) {
+        throw new Error('ASSIGNMENT_QUESTIONS_REQUIRED: No questions found for grading.');
+      }
       const hasModelAnswer =
         linkedQuestions.some((q) => String(q.model_answer || '').trim()) ||
         Boolean(assignment?.modelAnswer || assignment?.modelAnswerText);
@@ -1637,6 +1647,7 @@ app.post(
     if (new Date(assignment.dueDate) < new Date()) {
       return res.status(400).json({ message: 'Deadline has passed' });
     }
+    const hasAssignmentQuestions = Array.isArray(assignment.questions) && assignment.questions.length > 0;
 
     const now = new Date();
     const studentObjectId = parseObjectId(req.user.id);
@@ -1674,7 +1685,13 @@ app.post(
           );
         });
       });
-      return res.json(updated);
+      return res.json({
+        ...updated,
+        gradingReady: hasAssignmentQuestions,
+        warning: hasAssignmentQuestions
+          ? null
+          : 'Assignment/exam questions are missing. Ask the doctor to upload the assignment/exam paper before AI grading.',
+      });
     }
     const doc = {
       assignmentId,
@@ -1692,6 +1709,7 @@ app.post(
           }
         : null,
       files: uploadedFiles.map(fileMetadata),
+      gradingReady: hasAssignmentQuestions,
       createdAt: now,
       updatedAt: now,
     };
@@ -1707,7 +1725,12 @@ app.post(
       });
     });
 
-    return res.status(201).json(doc);
+    return res.status(201).json({
+      ...doc,
+      warning: hasAssignmentQuestions
+        ? null
+        : 'Assignment/exam questions are missing. Ask the doctor to upload the assignment/exam paper before AI grading.',
+    });
   })
 );
 

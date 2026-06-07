@@ -820,7 +820,8 @@
                   "});",
                   "const json = pm.response.json();",
                   "if (json && json._id) pm.collectionVariables.set('submissionId', json._id);",
-                  "pm.test('Submission stores course', function () { pm.expect(json.course || json.assignmentCourse).to.eql('AI'); });"
+                  "pm.test('Submission stores course', function () { pm.expect(json.course || json.assignmentCourse).to.eql('AI'); });",
+                  "pm.test('Submission exposes grading readiness', function () { pm.expect(json).to.have.property('gradingReady'); });"
                 ]
               }
             }
