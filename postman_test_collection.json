@@ -819,7 +819,8 @@
                   "  pm.expect([200, 201]).to.include(pm.response.code);",
                   "});",
                   "const json = pm.response.json();",
-                  "if (json && json._id) pm.collectionVariables.set('submissionId', json._id);"
+                  "if (json && json._id) pm.collectionVariables.set('submissionId', json._id);",
+                  "pm.test('Submission stores course', function () { pm.expect(json.course || json.assignmentCourse).to.eql('AI'); });"
                 ]
               }
             }
@@ -886,7 +887,8 @@
                   "  pm.expect(first).to.have.property('similarity');",
                   "});",
                   "pm.test('Doctor review exposes grade_results', function () { pm.expect(json.grade_results).to.be.an('array'); });",
-                  "pm.test('Review item has answerStatus', function () { pm.expect(first).to.have.property('answerStatus'); });"
+                  "pm.test('Review item has answerStatus', function () { pm.expect(first).to.have.property('answerStatus'); });",
+                  "pm.test('Doctor review exposes course', function () { pm.expect(json.course).to.eql('AI'); });"
                 ]
               }
             }

@@ -854,14 +854,23 @@ const runSubmissionPipeline = async ({ submissionId, uploadedFiles = [] }) => {
     maxRetries: retryCap,
     fn: async () => {
       const totalMark = Number(assignment?.totalMark ?? 20);
+      const courseId = getCourseIdForPipeline(assignment);
       const courseMaterials = assignment ? await getCourseMaterialsForAssignment(db, assignment) : [];
       const materialSummary = buildMaterialSummary(courseMaterials);
       const linkedQuestions = buildLinkedQuestionsForGrading(assignment, pipelineSubmission, {
         materials: materialSummary,
       });
-      const hasModelAnswer = linkedQuestions.some((q) => String(q.model_answer || '').trim()) ||
+      const hasModelAnswer =
+        linkedQuestions.some((q) => String(q.model_answer || '').trim()) ||
         Boolean(assignment?.modelAnswer || assignment?.modelAnswerText);
       const hasCourseMaterial = materialSummary.length > 0;
+      const gradingStrategy = hasCourseMaterial && hasModelAnswer
+        ? 'material_and_model_answer'
+        : hasCourseMaterial
+          ? 'course_material'
+          : hasModelAnswer
+            ? 'model_answer'
+            : 'gemini_fallback';
       if (!gradingApiUrl) {
         const base = String(submission.answerText || '').length % Math.max(totalMark, 1);
         return {
@@ -875,19 +884,14 @@ const runSubmissionPipeline = async ({ submissionId, uploadedFiles = [] }) => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          course_id: getCourseIdForPipeline(assignment),
+          course_id: courseId,
+          course: courseId,
           linked_questions: linkedQuestions,
           materials: materialSummary,
           course_materials: materialSummary,
           has_course_material: hasCourseMaterial,
           has_model_answer: hasModelAnswer,
-          grading_strategy: hasCourseMaterial && hasModelAnswer
-            ? 'material_and_model_answer'
-            : hasCourseMaterial
-              ? 'course_material'
-              : hasModelAnswer
-                ? 'model_answer'
-                : 'gemini_fallback',
+          grading_strategy: gradingStrategy,
         }),
       });
       if (!resp.ok) throw new Error(`grading failed with ${resp.status}`);
@@ -924,6 +928,8 @@ const runSubmissionPipeline = async ({ submissionId, uploadedFiles = [] }) => {
         scoreBreakdown: grading.grade_results,
         feedback: grading.feedback,
         gradingSource: grading.grading_mode,
+        gradingCourse: getCourseIdForPipeline(assignment),
+        gradingStrategy: grading.grading_strategy || grading.gradingStrategy || grading.grading_mode,
         pipelineStatus: 'completed',
         pipelineRetries: Math.max(aiDetectionStep.attempts, gradingStep.attempts),
         pipelineSteps: steps,
@@ -1648,6 +1654,8 @@ app.post(
     if (existingSubmission) {
       const updateFields = {
         answerText: req.body.answerText || existingSubmission.answerText || '',
+        course: getCourseIdForPipeline(assignment),
+        assignmentCourse: getCourseIdForPipeline(assignment),
         status: 'submitted',
         updatedAt: now,
       };
@@ -1671,6 +1679,8 @@ app.post(
     const doc = {
       assignmentId,
       assignmentTitle: assignment.title,
+      course: getCourseIdForPipeline(assignment),
+      assignmentCourse: getCourseIdForPipeline(assignment),
       studentId: studentObjectId || req.user.id,
       studentEmail: req.user.email,
       answerText: req.body.answerText || '',
@@ -2186,6 +2196,7 @@ app.get(
       submissionId: idToString(submission._id),
       assignmentId: idToString(submission.assignmentId),
       title: submission.assignmentTitle || assignment?.title || 'Untitled',
+      course: submission.course || getCourseIdForPipeline(assignment),
       score,
       totalMark,
       percentage: Number(percent.toFixed(2)),
@@ -2227,6 +2238,7 @@ app.get(
       submissionId: idToString(submission._id),
       assignmentId: idToString(submission.assignmentId),
       title: submission.assignmentTitle || assignment?.title || 'Untitled',
+      course: submission.course || getCourseIdForPipeline(assignment),
       score: getSubmissionScore(submission),
       similarity: getSubmissionSimilarity(submission),
       grade_results: Array.isArray(submission.scoreBreakdown)
@@ -2639,6 +2651,7 @@ app.get(
       submissionId: idToString(submission._id),
       assignmentId: idToString(submission.assignmentId),
       assignmentTitle: submission.assignmentTitle || assignment?.title || 'Untitled',
+      course: submission.course || getCourseIdForPipeline(assignment),
       student: {
         id: idToString(submission.studentId),
         name: submission.studentName || submission.studentEmail || 'Student',
