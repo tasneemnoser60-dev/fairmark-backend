@@ -615,7 +615,10 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('Upload assignment file validation returns 200/400', function () { pm.expect([200,400]).to.include(pm.response.code); });"
+                  "pm.test('31 - Upload Assignment File Validation returns expected upload/VLM status', function () { pm.expect(pm.response.code).to.be.oneOf([200,400,422,502,503]); });",
+                  "const json = pm.response.json();",
+                  "if (pm.response.code === 200) { pm.expect(json).to.have.property('questionsCount'); }",
+                  "if ([422,502,503].includes(pm.response.code)) { pm.expect(json).to.have.property('code', 'VLM_QUESTIONS_NOT_EXTRACTED'); }"
                 ]
               }
             }
@@ -1475,7 +1478,10 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('Upload exam paper returns 200/400', function () { pm.expect([200,400]).to.include(pm.response.code); });"
+                  "pm.test('27 - Upload Exam Paper (Alias) returns expected upload/VLM status', function () { pm.expect(pm.response.code).to.be.oneOf([200,400,422,502,503]); });",
+                  "const json = pm.response.json();",
+                  "if (pm.response.code === 200) { pm.expect(json).to.have.property('questionsCount'); }",
+                  "if ([422,502,503].includes(pm.response.code)) { pm.expect(json).to.have.property('code', 'VLM_QUESTIONS_NOT_EXTRACTED'); }"
                 ]
               }
             }

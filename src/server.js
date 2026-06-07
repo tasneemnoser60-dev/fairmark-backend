@@ -665,6 +665,31 @@ const normalizeVlmAnswersPayload = (payload = {}) => {
   };
 };
 
+const hasUsableVlmQuestions = (payload = {}) =>
+  Array.isArray(payload.questions) &&
+  payload.questions.some((q) => String(q.text || q.question || q.question_text || '').trim());
+
+const buildVlmQuestionExtractionError = (vlmExam) => {
+  if (!vlmApiUrl) {
+    return { status: 503, message: 'VLM_API_URL is not configured, so exam questions cannot be extracted.' };
+  }
+  if (!vlmExam) {
+    return { status: 502, message: 'VLM did not return a response while extracting exam questions.' };
+  }
+  if (vlmExam.error) {
+    return { status: 502, message: 'VLM failed to extract exam questions.', details: vlmExam.error };
+  }
+  if (!hasUsableVlmQuestions(vlmExam)) {
+    return {
+      status: 422,
+      message:
+        'VLM could not extract any questions from this file. Upload a clearer exam/assignment paper image or PDF.',
+      details: vlmExam,
+    };
+  }
+  return null;
+};
+
 const callVlmProcessExam = async (files = []) => {
   if (!vlmApiUrl || !files.length) return null;
   const form = new FormData();
@@ -1484,17 +1509,44 @@ app.post(
     const uploaded = uploadedFiles[0] || null;
     const validType = validateUploadFiles(uploadedFiles);
     if (!validType.ok) return res.status(400).json({ message: validType.message });
-    let vlmExam = null;
-    if (vlmApiUrl && uploadedFiles.length) {
-      try {
-        vlmExam = await callVlmProcessExam(uploadedFiles);
-      } catch (err) {
-        vlmExam = { error: err.message };
-      }
-    }
+	    let vlmExam = null;
+	    if (vlmApiUrl && uploadedFiles.length) {
+	      try {
+	        vlmExam = await callVlmProcessExam(uploadedFiles);
+	      } catch (err) {
+	        vlmExam = { error: err.message };
+	      }
+	    }
+	    const vlmError = buildVlmQuestionExtractionError(vlmExam);
+	    if (vlmError) {
+	      await db.collection('assignments').updateOne(
+	        { _id },
+	        {
+	          $set: {
+	            examFile: {
+	              ...fileMetadata(uploaded),
+	              uploadedAt: new Date(),
+	            },
+	            examFiles: uploadedFiles.map((file) => ({
+	              ...fileMetadata(file),
+	              uploadedAt: new Date(),
+	            })),
+	            vlmExamError: vlmError.message,
+	            vlmExamRaw: vlmError.details || vlmExam || null,
+	            updatedAt: new Date(),
+	          },
+	        }
+	      );
+	      return res.status(vlmError.status).json({
+	        ok: false,
+	        code: 'VLM_QUESTIONS_NOT_EXTRACTED',
+	        message: vlmError.message,
+	        details: vlmError.details || null,
+	      });
+	    }
 
-    await db.collection('assignments').updateOne(
-      { _id },
+	    await db.collection('assignments').updateOne(
+	      { _id },
       {
         $set: {
           examFile: {
@@ -1523,10 +1575,11 @@ app.post(
         ...fileMetadata(uploaded),
       },
       files: uploadedFiles.map(fileMetadata),
-      count: uploadedFiles.length,
-      vlmExam,
-    });
-  })
+	      count: uploadedFiles.length,
+	      questionsCount: Array.isArray(vlmExam?.questions) ? vlmExam.questions.length : 0,
+	      vlmExam,
+	    });
+	  })
 );
 
 app.post(
@@ -1547,17 +1600,44 @@ app.post(
     const uploaded = uploadedFiles[0] || null;
     const validType = validateUploadFiles(uploadedFiles);
     if (!validType.ok) return res.status(400).json({ message: validType.message });
-    let vlmExam = null;
-    if (vlmApiUrl && uploadedFiles.length) {
-      try {
-        vlmExam = await callVlmProcessExam(uploadedFiles);
-      } catch (err) {
-        vlmExam = { error: err.message };
-      }
-    }
+	    let vlmExam = null;
+	    if (vlmApiUrl && uploadedFiles.length) {
+	      try {
+	        vlmExam = await callVlmProcessExam(uploadedFiles);
+	      } catch (err) {
+	        vlmExam = { error: err.message };
+	      }
+	    }
+	    const vlmError = buildVlmQuestionExtractionError(vlmExam);
+	    if (vlmError) {
+	      await db.collection('assignments').updateOne(
+	        { _id },
+	        {
+	          $set: {
+	            examFile: {
+	              ...fileMetadata(uploaded),
+	              uploadedAt: new Date(),
+	            },
+	            examFiles: uploadedFiles.map((file) => ({
+	              ...fileMetadata(file),
+	              uploadedAt: new Date(),
+	            })),
+	            vlmExamError: vlmError.message,
+	            vlmExamRaw: vlmError.details || vlmExam || null,
+	            updatedAt: new Date(),
+	          },
+	        }
+	      );
+	      return res.status(vlmError.status).json({
+	        ok: false,
+	        code: 'VLM_QUESTIONS_NOT_EXTRACTED',
+	        message: vlmError.message,
+	        details: vlmError.details || null,
+	      });
+	    }
 
-    await db.collection('assignments').updateOne(
-      { _id },
+	    await db.collection('assignments').updateOne(
+	      { _id },
       {
         $set: {
           examFile: {
@@ -1586,10 +1666,11 @@ app.post(
       file: {
         ...fileMetadata(uploaded),
       },
-      files: uploadedFiles.map(fileMetadata),
-      count: uploadedFiles.length,
-      vlmExam,
-    });
+	      files: uploadedFiles.map(fileMetadata),
+	      count: uploadedFiles.length,
+	      questionsCount: Array.isArray(vlmExam?.questions) ? vlmExam.questions.length : 0,
+	      vlmExam,
+	    });
   })
 );
 
