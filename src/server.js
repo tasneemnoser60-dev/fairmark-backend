@@ -32,6 +32,7 @@ const trustProxy =
           ? trustProxyEnv
           : Number(trustProxyEnv);
 app.set('trust proxy', trustProxy);
+app.disable('etag');
 
 app.use(helmet());
 const corsOriginEnv = (process.env.CORS_ORIGIN || '').trim();
@@ -49,6 +50,13 @@ app.use(
 );
 app.use(express.json({ limit: '2mb' }));
 app.use(express.urlencoded({ extended: true }));
+app.use((_req, res, next) => {
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.set('Pragma', 'no-cache');
+  res.set('Expires', '0');
+  res.set('Surrogate-Control', 'no-store');
+  next();
+});
 app.use(morgan('dev'));
 app.use(
   rateLimit({
@@ -425,6 +433,28 @@ const getItemSimilarity = (item = {}) =>
       item.matchPercentage
   );
 
+const getItemQuestionText = (item = {}) =>
+  String(
+    item.question ??
+      item.question_text ??
+      item.questionText ??
+      item.prompt ??
+      item.text ??
+      ''
+  ).trim();
+
+const getItemStudentAnswer = (item = {}) =>
+  String(
+    item.student_answer ??
+      item.studentAnswer ??
+      item.answer ??
+      item.answer_text ??
+      item.answerText ??
+      item.response ??
+      item.text ??
+      ''
+  ).trim();
+
 const getSubmissionScore = (submission) => {
   if (!submission) return null;
   const directScore = firstFiniteNumber(submission.score, submission.total_score, submission.totalScore);
@@ -448,8 +478,15 @@ const getSubmissionSimilarity = (submission) => {
 };
 
 const buildQuestionReviewItems = ({ assignment = {}, submission = {} }) => {
+  const breakdown = Array.isArray(submission.scoreBreakdown) ? submission.scoreBreakdown : [];
   const questions = Array.isArray(assignment?.questions) && assignment.questions.length
     ? assignment.questions
+    : breakdown.length
+      ? breakdown.map((item, index) => ({
+          id: item.question_id ?? item.questionId ?? item.id ?? index + 1,
+          text: getItemQuestionText(item) || assignment?.assignmentText || assignment?.description || assignment?.title || 'Question',
+          points: firstFiniteNumber(item.outOf, item.max_score, item.maxScore, assignment?.totalMark),
+        }))
     : [
         {
           id: 1,
@@ -467,7 +504,6 @@ const buildQuestionReviewItems = ({ assignment = {}, submission = {} }) => {
           similarity: getSubmissionSimilarity(submission),
         },
       ];
-  const breakdown = Array.isArray(submission.scoreBreakdown) ? submission.scoreBreakdown : [];
   const byAnswerQ = new Map(answers.map((a) => [getQuestionResultKey(a), a]));
   const byBreakdownQ = new Map(breakdown.map((b) => [getQuestionResultKey(b), b]));
 
@@ -477,10 +513,22 @@ const buildQuestionReviewItems = ({ assignment = {}, submission = {} }) => {
     const result = byBreakdownQ.get(key) || byBreakdownQ.get(idToString(index + 1)) || breakdown[index] || {};
     const score = getItemScore(answer || {}) ?? getItemScore(result);
     const similarity = getItemSimilarity(answer || {}) ?? getItemSimilarity(result);
-    const studentAnswer = answer?.answer || answer?.studentAnswer || answer?.text || '';
+    const studentAnswer =
+      getItemStudentAnswer(answer || {}) ||
+      getItemStudentAnswer(result) ||
+      (questions.length === 1 ? String(submission.answerText || '').trim() : '');
+    const questionText =
+      q.text ||
+      q.question ||
+      getItemQuestionText(result) ||
+      getItemQuestionText(answer || {}) ||
+      assignment?.assignmentText ||
+      assignment?.description ||
+      assignment?.title ||
+      'Question';
     return {
       questionId: q.id ?? q.question_id ?? index + 1,
-      question: q.text || q.question || '',
+      question: questionText,
       studentAnswer,
       answer: studentAnswer,
       score,
@@ -495,6 +543,80 @@ const buildQuestionReviewItems = ({ assignment = {}, submission = {} }) => {
             : 'submitted',
     };
   });
+};
+
+const appendFilesToForm = (form, files = [], fieldName = 'images') => {
+  for (const file of files) {
+    form.append(fieldName, new Blob([file.buffer], { type: file.mimetype }), file.originalname);
+  }
+};
+
+const normalizeVlmExamPayload = (payload = {}) => {
+  const questions = Array.isArray(payload.questions)
+    ? payload.questions
+    : Array.isArray(payload.exam?.questions)
+      ? payload.exam.questions
+      : [];
+  return {
+    ...payload,
+    questions: questions.map((q, index) => ({
+      id: q.id ?? q.question_id ?? q.questionId ?? index + 1,
+      text: q.text || q.question || q.question_text || '',
+      type: q.type || 'essay',
+      options: Array.isArray(q.options) ? q.options : [],
+      points: firstFiniteNumber(q.points, q.max_score, q.maxScore) ?? 1,
+      correct_answer: q.correct_answer || q.correctAnswer || '',
+      model_answer: q.model_answer || q.modelAnswer || '',
+    })),
+  };
+};
+
+const normalizeVlmAnswersPayload = (payload = {}) => {
+  const answers = Array.isArray(payload.answers)
+    ? payload.answers
+    : Array.isArray(payload.items)
+      ? payload.items
+      : [];
+  return {
+    ...payload,
+    answers: answers.map((a, index) => ({
+      question_id: a.question_id ?? a.questionId ?? a.id ?? index + 1,
+      answer: a.answer || a.student_answer || a.studentAnswer || a.text || '',
+    })),
+  };
+};
+
+const callVlmProcessExam = async (files = []) => {
+  if (!vlmApiUrl || !files.length) return null;
+  const form = new FormData();
+  appendFilesToForm(form, files);
+  const response = await fetch(`${vlmApiUrl}/process-exam`, { method: 'POST', body: form });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(`vlm process-exam failed with ${response.status}: ${JSON.stringify(payload)}`);
+  return normalizeVlmExamPayload(payload);
+};
+
+const callVlmProcessAnswers = async ({ files = [], questions = [] }) => {
+  if (!vlmApiUrl || !files.length || !questions.length) return null;
+  const form = new FormData();
+  appendFilesToForm(form, files);
+  form.append('questions', JSON.stringify(questions));
+  const response = await fetch(`${vlmApiUrl}/process-answers`, { method: 'POST', body: form });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(`vlm process-answers failed with ${response.status}: ${JSON.stringify(payload)}`);
+  return normalizeVlmAnswersPayload(payload);
+};
+
+const callVlmLink = async ({ exam, answers }) => {
+  if (!vlmApiUrl || !exam?.questions?.length || !answers?.answers?.length) return null;
+  const response = await fetch(`${vlmApiUrl}/link`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ exam, answers }),
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(`vlm link failed with ${response.status}: ${JSON.stringify(payload)}`);
+  return Array.isArray(payload) ? payload : Array.isArray(payload.linked_questions) ? payload.linked_questions : null;
 };
 
 const runPipelineStepWithRetry = async ({ submissionId, stepName, fn, maxRetries }) => {
@@ -513,7 +635,7 @@ const runPipelineStepWithRetry = async ({ submissionId, stepName, fn, maxRetries
   return { ok: false, error: lastError, attempts: maxRetries };
 };
 
-const runSubmissionPipeline = async ({ submissionId }) => {
+const runSubmissionPipeline = async ({ submissionId, uploadedFiles = [] }) => {
   const db = getDbOrFail();
   const _id = parseObjectId(submissionId);
   if (!_id) return;
@@ -521,6 +643,7 @@ const runSubmissionPipeline = async ({ submissionId }) => {
   if (!submission) return;
   const assignmentId = getSubmissionAssignmentObjectId(submission);
   const assignment = assignmentId ? await db.collection('assignments').findOne({ _id: assignmentId }) : null;
+  let pipelineSubmission = { ...submission };
   const retryCap = Number.isFinite(maxPipelineRetries) && maxPipelineRetries > 0 ? maxPipelineRetries : 3;
 
   await db.collection('submissions').updateOne(
@@ -537,12 +660,77 @@ const runSubmissionPipeline = async ({ submissionId }) => {
 
   const steps = [];
 
+  const assignmentQuestions = Array.isArray(assignment?.questions) ? assignment.questions : [];
+  if (uploadedFiles.length && assignmentQuestions.length && vlmApiUrl) {
+    const vlmStep = await runPipelineStepWithRetry({
+      submissionId,
+      stepName: 'vlm',
+      maxRetries: retryCap,
+      fn: async () => {
+        const examPayload = normalizeVlmExamPayload({ questions: assignmentQuestions });
+        const answersPayload = await callVlmProcessAnswers({
+          files: uploadedFiles,
+          questions: examPayload.questions,
+        });
+        const linkedQuestions = await callVlmLink({
+          exam: examPayload,
+          answers: answersPayload,
+        });
+        const extractedAnswerText = (answersPayload?.answers || [])
+          .map((a) => a.answer)
+          .filter(Boolean)
+          .join('\n\n');
+        return { examPayload, answersPayload, linkedQuestions, extractedAnswerText };
+      },
+    });
+    steps.push({ step: 'vlm', ok: vlmStep.ok, attempts: vlmStep.attempts });
+    if (vlmStep.ok) {
+      const vlmResult = vlmStep.result || {};
+      const updateFields = {
+        vlmExam: vlmResult.examPayload,
+        vlmAnswers: vlmResult.answersPayload,
+        linked_questions: Array.isArray(vlmResult.linkedQuestions) ? vlmResult.linkedQuestions : [],
+        answers: Array.isArray(vlmResult.answersPayload?.answers) ? vlmResult.answersPayload.answers : [],
+        pipelineUpdatedAt: new Date(),
+      };
+      if (vlmResult.extractedAnswerText) {
+        updateFields.answerText = vlmResult.extractedAnswerText;
+      }
+      await db.collection('submissions').updateOne({ _id }, { $set: updateFields });
+      pipelineSubmission = {
+        ...pipelineSubmission,
+        ...updateFields,
+      };
+    } else {
+      await db.collection('submissions').updateOne(
+        { _id },
+        {
+          $set: {
+            vlmError: vlmStep.error?.message || 'VLM failed',
+            pipelineUpdatedAt: new Date(),
+          },
+        }
+      );
+    }
+  } else {
+    steps.push({
+      step: 'vlm',
+      ok: false,
+      skipped: true,
+      reason: !vlmApiUrl
+        ? 'vlm_not_configured'
+        : !uploadedFiles.length
+          ? 'no_submission_images'
+          : 'no_assignment_questions',
+    });
+  }
+
   const aiDetectionStep = await runPipelineStepWithRetry({
     submissionId,
     stepName: 'ai-detection',
     maxRetries: retryCap,
     fn: async () => {
-      const text = String(submission.answerText || '').trim();
+      const text = String(pipelineSubmission.answerText || '').trim();
       if (!text) return { ai_percentage: 0, decision: 'unknown' };
       if (!aiDetectionEndpoint) return { ai_percentage: 0.12, decision: 'human_like', mock: true };
       const resp = await fetch(aiDetectionEndpoint, {
@@ -591,7 +779,7 @@ const runSubmissionPipeline = async ({ submissionId }) => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           course_id: getCourseIdForPipeline(assignment),
-          linked_questions: buildLinkedQuestionsForGrading(assignment, submission),
+          linked_questions: buildLinkedQuestionsForGrading(assignment, pipelineSubmission),
         }),
       });
       if (!resp.ok) throw new Error(`grading failed with ${resp.status}`);
@@ -1172,6 +1360,14 @@ app.post(
     const uploaded = uploadedFiles[0] || null;
     const validType = validateUploadFiles(uploadedFiles);
     if (!validType.ok) return res.status(400).json({ message: validType.message });
+    let vlmExam = null;
+    if (vlmApiUrl && uploadedFiles.length) {
+      try {
+        vlmExam = await callVlmProcessExam(uploadedFiles);
+      } catch (err) {
+        vlmExam = { error: err.message };
+      }
+    }
 
     await db.collection('assignments').updateOne(
       { _id },
@@ -1185,6 +1381,11 @@ app.post(
             ...fileMetadata(file),
             uploadedAt: new Date(),
           })),
+          ...(vlmExam && !vlmExam.error && Array.isArray(vlmExam.questions) && vlmExam.questions.length
+            ? { questions: vlmExam.questions, vlmExam }
+            : vlmExam?.error
+              ? { vlmExamError: vlmExam.error }
+              : {}),
           updatedAt: new Date(),
         },
       }
@@ -1199,6 +1400,7 @@ app.post(
       },
       files: uploadedFiles.map(fileMetadata),
       count: uploadedFiles.length,
+      vlmExam,
     });
   })
 );
@@ -1221,6 +1423,14 @@ app.post(
     const uploaded = uploadedFiles[0] || null;
     const validType = validateUploadFiles(uploadedFiles);
     if (!validType.ok) return res.status(400).json({ message: validType.message });
+    let vlmExam = null;
+    if (vlmApiUrl && uploadedFiles.length) {
+      try {
+        vlmExam = await callVlmProcessExam(uploadedFiles);
+      } catch (err) {
+        vlmExam = { error: err.message };
+      }
+    }
 
     await db.collection('assignments').updateOne(
       { _id },
@@ -1234,6 +1444,11 @@ app.post(
             ...fileMetadata(file),
             uploadedAt: new Date(),
           })),
+          ...(vlmExam && !vlmExam.error && Array.isArray(vlmExam.questions) && vlmExam.questions.length
+            ? { questions: vlmExam.questions, vlmExam }
+            : vlmExam?.error
+              ? { vlmExamError: vlmExam.error }
+              : {}),
           updatedAt: new Date(),
         },
       }
@@ -1249,6 +1464,7 @@ app.post(
       },
       files: uploadedFiles.map(fileMetadata),
       count: uploadedFiles.length,
+      vlmExam,
     });
   })
 );
@@ -1336,7 +1552,7 @@ app.post(
       await db.collection('submissions').updateOne({ _id: existingSubmission._id }, { $set: updateFields });
       const updated = await db.collection('submissions').findOne({ _id: existingSubmission._id });
       setImmediate(() => {
-        runSubmissionPipeline({ submissionId: idToString(existingSubmission._id) }).catch((err) => {
+        runSubmissionPipeline({ submissionId: idToString(existingSubmission._id), uploadedFiles }).catch((err) => {
           console.error(
             `[pipeline] submission_id=${idToString(existingSubmission._id)} error=${err.message || 'unknown error'}`
           );
@@ -1366,7 +1582,7 @@ app.post(
     doc._id = result.insertedId;
 
     setImmediate(() => {
-      runSubmissionPipeline({ submissionId: idToString(doc._id) }).catch((err) => {
+      runSubmissionPipeline({ submissionId: idToString(doc._id), uploadedFiles }).catch((err) => {
         console.error(
           `[pipeline] submission_id=${idToString(doc._id)} error=${err.message || 'unknown error'}`
         );
