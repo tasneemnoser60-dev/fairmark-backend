@@ -583,7 +583,7 @@ const buildQuestionReviewItems = ({ assignment = {}, submission = {} }) => {
     const key = idToString(q.id ?? q.question_id ?? index + 1);
     const answer = byAnswerQ.get(key) || byAnswerQ.get(idToString(index + 1)) || answers[index] || null;
     const result = byBreakdownQ.get(key) || byBreakdownQ.get(idToString(index + 1)) || breakdown[index] || {};
-    const score = getItemScore(answer || {}) ?? getItemScore(result);
+    const score = getItemScore(result) ?? getItemScore(answer || {});
     const similarity = getItemSimilarity(answer || {}) ?? getItemSimilarity(result);
     const maxScore = firstFiniteNumber(q.points, q.mark, q.marks, result.outOf, result.max_score, result.maxScore);
     const studentAnswer =
@@ -1795,6 +1795,90 @@ app.get(
       if (!access.ok) return res.status(access.status).json({ message: access.message });
     }
     return res.json(doc);
+  })
+);
+
+app.post(
+  '/submissions/:id/reprocess',
+  auth,
+  allowRoles('doctor', 'admin'),
+  upload.any(),
+  asyncRoute(async (req, res) => {
+    const db = getDbOrFail();
+    const _id = parseObjectId(req.params.id);
+    if (!_id) return res.status(400).json({ message: 'Invalid submission id' });
+
+    const submission = await db.collection('submissions').findOne({ _id });
+    if (!submission) return res.status(404).json({ message: 'Submission not found' });
+
+    const assignmentId = getSubmissionAssignmentObjectId(submission);
+    if (!assignmentId) return res.status(400).json({ message: 'Invalid assignment id on submission' });
+    const assignment = await db.collection('assignments').findOne({ _id: assignmentId });
+    const access = ensureDoctorAssignmentAccess(assignment, req.user);
+    if (!access.ok) return res.status(access.status).json({ message: access.message });
+
+    const uploadedFiles = pickUploadedFiles(req.files);
+    if (uploadedFiles.length) {
+      const validType = validateUploadFiles(uploadedFiles);
+      if (!validType.ok) return res.status(400).json({ message: validType.message });
+    }
+
+    const hasQuestions = Array.isArray(assignment?.questions) && assignment.questions.length > 0;
+    if (!hasQuestions) {
+      return res.status(400).json({
+        message:
+          'Assignment/exam questions are missing. Upload the assignment/exam paper first, then reprocess the submission.',
+        code: 'ASSIGNMENT_QUESTIONS_REQUIRED',
+      });
+    }
+
+    const hasExistingAnswer =
+      Boolean(String(submission.answerText || '').trim()) ||
+      (Array.isArray(submission.answers) && submission.answers.length > 0);
+    if (!uploadedFiles.length && !hasExistingAnswer) {
+      return res.status(400).json({
+        message:
+          "Student answer images are required for reprocessing because this submission does not have extracted answers. Send form-data field 'images' or 'file'.",
+        code: 'SUBMISSION_ANSWERS_REQUIRED',
+      });
+    }
+
+    await db.collection('submissions').updateOne(
+      { _id },
+      {
+        $set: {
+          status: 'submitted',
+          score: null,
+          similarity: null,
+          scoreBreakdown: [],
+          feedback: '',
+          pipelineStatus: 'queued',
+          pipelineError: null,
+          pipelineUpdatedAt: new Date(),
+          ...(uploadedFiles.length
+            ? {
+                file: fileMetadata(uploadedFiles[0]),
+                files: uploadedFiles.map(fileMetadata),
+              }
+            : {}),
+        },
+      }
+    );
+
+    setImmediate(() => {
+      runSubmissionPipeline({ submissionId: idToString(_id), uploadedFiles }).catch((err) => {
+        console.error(`[pipeline] reprocess submission_id=${idToString(_id)} error=${err.message || 'unknown error'}`);
+      });
+    });
+
+    return res.json({
+      message: 'Submission reprocess started',
+      submissionId: idToString(_id),
+      assignmentId: idToString(assignmentId),
+      course: getCourseIdForPipeline(assignment),
+      uploadedFiles: uploadedFiles.length,
+      status: 'queued',
+    });
   })
 );
 

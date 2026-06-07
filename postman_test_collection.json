@@ -1035,6 +1035,43 @@
               }
             }
           ]
+        },
+        {
+          "name": "07c - Reprocess Submission (Doctor)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{doctorToken}}"
+              }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "images",
+                  "type": "file",
+                  "src": [],
+                  "disabled": true
+                }
+              ]
+            },
+            "url": "{{baseUrl}}/submissions/{{submissionId}}/reprocess"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Reprocess submission starts or asks for required source data', function () { pm.expect(pm.response.code).to.be.oneOf([200,400]); });",
+                  "const json = pm.response.json();",
+                  "pm.test('Reprocess response explains state', function () { pm.expect(json.message || json.code).to.be.a('string'); });"
+                ]
+              }
+            }
+          ]
         }
       ]
     },
