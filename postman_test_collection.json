@@ -620,6 +620,114 @@
               }
             }
           ]
+        },
+        {
+          "name": "24 - Upload Course Material (Doctor)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{doctorToken}}"
+              }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "course",
+                  "value": "AI",
+                  "type": "text"
+                },
+                {
+                  "key": "materialName",
+                  "value": "AI Course Material",
+                  "type": "text"
+                },
+                {
+                  "key": "description",
+                  "value": "Reference material for AI course grading",
+                  "type": "text"
+                },
+                {
+                  "key": "materialText",
+                  "value": "AI grading reference material for semantic similarity, RAG, and answer evaluation.",
+                  "type": "text"
+                },
+                {
+                  "key": "files",
+                  "type": "file",
+                  "src": [],
+                  "disabled": true
+                }
+              ]
+            },
+            "url": "{{baseUrl}}/doctor/materials"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Upload course material success', function () { pm.expect(pm.response.code).to.be.oneOf([200,201]); });",
+                  "const json = pm.response.json();",
+                  "pm.test('Material has id', function () { pm.expect(json.material).to.have.property('id'); });",
+                  "if (json.material && json.material.id) pm.collectionVariables.set('materialId', json.material.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "24b - List Course Materials (Doctor)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{doctorToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/doctor/materials?course=AI"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('List course materials success', function () { pm.expect(pm.response.code).to.eql(200); });",
+                  "const json = pm.response.json();",
+                  "pm.test('Materials list returned', function () { pm.expect(json.items).to.be.an('array'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "24c - Delete Course Material (Doctor)",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{doctorToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/doctor/materials/{{materialId}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Delete course material success or already absent', function () { pm.expect(pm.response.code).to.be.oneOf([200,404]); });"
+                ]
+              }
+            }
+          ]
         }
       ]
     },
@@ -776,7 +884,9 @@
                   "  pm.expect(first).to.be.an('object');",
                   "  pm.expect(first).to.have.property('score');",
                   "  pm.expect(first).to.have.property('similarity');",
-                  "});"
+                  "});",
+                  "pm.test('Doctor review exposes grade_results', function () { pm.expect(json.grade_results).to.be.an('array'); });",
+                  "pm.test('Review item has answerStatus', function () { pm.expect(first).to.have.property('answerStatus'); });"
                 ]
               }
             }

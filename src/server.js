@@ -171,6 +171,10 @@ const ensureIndexes = async () => {
       { name: 'submissions_assignmentId' }
     ),
     db.collection('submissions').createIndex({ studentId: 1 }, { name: 'submissions_studentId' }),
+    db.collection('course_materials').createIndex(
+      { doctorId: 1, course: 1 },
+      { name: 'course_materials_doctor_course' }
+    ),
     db.collection('audit_logs').createIndex({ createdAt: -1 }, { name: 'audit_logs_createdAt_desc' }),
   ]);
 };
@@ -292,9 +296,18 @@ const validateUploadFileType = (file) => {
   return { ok: true };
 };
 
-const buildLinkedQuestionsForGrading = (assignment = {}, submission = {}) => {
+const buildLinkedQuestionsForGrading = (assignment = {}, submission = {}, options = {}) => {
+  const materials = Array.isArray(options.materials) ? options.materials : [];
+  const materialText = materials
+    .map((m) => [m.title, m.description, m.materialText].filter(Boolean).join('\n'))
+    .filter(Boolean)
+    .join('\n\n');
   if (Array.isArray(submission.linked_questions) && submission.linked_questions.length) {
-    return submission.linked_questions;
+    return submission.linked_questions.map((q) => ({
+      ...q,
+      course_material: q.course_material || materialText,
+      materials,
+    }));
   }
 
   const answers = Array.isArray(submission.answers) ? submission.answers : [];
@@ -326,6 +339,8 @@ const buildLinkedQuestionsForGrading = (assignment = {}, submission = {}) => {
       correct_answer: q.correct_answer || '',
       model_answer: q.model_answer || q.modelAnswer || '',
       max_score: q.points || assignment.totalMark || 1,
+      course_material: materialText,
+      materials,
       attempted: studentAnswer !== 'na' && studentAnswer !== 'unclear' && Boolean(String(studentAnswer).trim()),
       needs_manual_review: studentAnswer === 'unclear',
     };
@@ -334,6 +349,61 @@ const buildLinkedQuestionsForGrading = (assignment = {}, submission = {}) => {
 
 const getCourseIdForPipeline = (assignment = {}) =>
   assignment.course_id || assignment.courseId || assignment.course || assignment.subject || null;
+
+const normalizeCourseName = (course) => String(course || '').trim();
+
+const isNotAttemptedAnswer = (value) => {
+  const text = String(value ?? '').trim().toLowerCase();
+  return !text || ['na', 'n/a', 'not answered', 'not_attempted', 'not attempted'].includes(text);
+};
+
+const normalizeReviewAnswer = (value) => (isNotAttemptedAnswer(value) ? '' : String(value ?? '').trim());
+
+const sanitizeGradeResultForReview = (item = {}) => {
+  const studentAnswer = getItemStudentAnswer(item);
+  return {
+    ...item,
+    student_answer: normalizeReviewAnswer(studentAnswer),
+    studentAnswer: normalizeReviewAnswer(studentAnswer),
+    answerStatus: isNotAttemptedAnswer(studentAnswer) ? 'not_attempted' : 'answered',
+  };
+};
+
+const buildMaterialSummary = (materialDocs = []) =>
+  materialDocs.map((doc) => ({
+    id: idToString(doc._id),
+    course: doc.course,
+    title: doc.title || doc.course,
+    description: doc.description || '',
+    materialText: doc.materialText || '',
+    files: Array.isArray(doc.files) ? doc.files : [],
+    gradingPayload: doc.gradingPayload || null,
+    uploadedAt: doc.createdAt || doc.uploadedAt || null,
+  }));
+
+const buildIdMatchValues = (value) => {
+  const values = [];
+  if (value !== undefined && value !== null && value !== '') values.push(value);
+  const asString = idToString(value);
+  if (asString) values.push(asString);
+  const asObjectId = parseObjectId(asString);
+  if (asObjectId) values.push(asObjectId);
+  return [...new Map(values.map((v) => [idToString(v) || String(v), v])).values()];
+};
+
+const getCourseMaterialsForAssignment = async (db, assignment = {}) => {
+  const course = normalizeCourseName(getCourseIdForPipeline(assignment));
+  if (!course) return [];
+  const ownerFilters = [
+    ...buildIdMatchValues(assignment.doctorId).map((doctorId) => ({ doctorId })),
+    ...(assignment.doctorEmail ? [{ doctorEmail: assignment.doctorEmail }] : []),
+  ];
+  const query = {
+    course,
+    ...(ownerFilters.length ? { $or: ownerFilters } : {}),
+  };
+  return db.collection('course_materials').find(query).sort({ createdAt: -1 }).toArray();
+};
 
 const normalizePercentValue = (value) => {
   if (typeof value !== 'number' || !Number.isFinite(value)) return null;
@@ -517,6 +587,7 @@ const buildQuestionReviewItems = ({ assignment = {}, submission = {} }) => {
       getItemStudentAnswer(answer || {}) ||
       getItemStudentAnswer(result) ||
       (questions.length === 1 ? String(submission.answerText || '').trim() : '');
+    const cleanedStudentAnswer = normalizeReviewAnswer(studentAnswer);
     const questionText =
       q.text ||
       q.question ||
@@ -529,8 +600,9 @@ const buildQuestionReviewItems = ({ assignment = {}, submission = {} }) => {
     return {
       questionId: q.id ?? q.question_id ?? index + 1,
       question: questionText,
-      studentAnswer,
-      answer: studentAnswer,
+      studentAnswer: cleanedStudentAnswer,
+      answer: cleanedStudentAnswer,
+      answerStatus: isNotAttemptedAnswer(studentAnswer) ? 'not_attempted' : 'answered',
       score,
       similarity,
       feedback: answer?.feedback || result.feedback || result.reasoning || '',
@@ -765,6 +837,14 @@ const runSubmissionPipeline = async ({ submissionId, uploadedFiles = [] }) => {
     maxRetries: retryCap,
     fn: async () => {
       const totalMark = Number(assignment?.totalMark ?? 20);
+      const courseMaterials = assignment ? await getCourseMaterialsForAssignment(db, assignment) : [];
+      const materialSummary = buildMaterialSummary(courseMaterials);
+      const linkedQuestions = buildLinkedQuestionsForGrading(assignment, pipelineSubmission, {
+        materials: materialSummary,
+      });
+      const hasModelAnswer = linkedQuestions.some((q) => String(q.model_answer || '').trim()) ||
+        Boolean(assignment?.modelAnswer || assignment?.modelAnswerText);
+      const hasCourseMaterial = materialSummary.length > 0;
       if (!gradingApiUrl) {
         const base = String(submission.answerText || '').length % Math.max(totalMark, 1);
         return {
@@ -779,7 +859,18 @@ const runSubmissionPipeline = async ({ submissionId, uploadedFiles = [] }) => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           course_id: getCourseIdForPipeline(assignment),
-          linked_questions: buildLinkedQuestionsForGrading(assignment, pipelineSubmission),
+          linked_questions: linkedQuestions,
+          materials: materialSummary,
+          course_materials: materialSummary,
+          has_course_material: hasCourseMaterial,
+          has_model_answer: hasModelAnswer,
+          grading_strategy: hasCourseMaterial && hasModelAnswer
+            ? 'material_and_model_answer'
+            : hasCourseMaterial
+              ? 'course_material'
+              : hasModelAnswer
+                ? 'model_answer'
+                : 'gemini_fallback',
         }),
       });
       if (!resp.ok) throw new Error(`grading failed with ${resp.status}`);
@@ -2065,7 +2156,7 @@ app.get(
     const similarity = getSubmissionSimilarity(submission);
 
     const scoreBreakdown = Array.isArray(submission.scoreBreakdown) && submission.scoreBreakdown.length
-      ? submission.scoreBreakdown
+      ? submission.scoreBreakdown.map(sanitizeGradeResultForReview)
       : [
           {
             question: 'Overall',
@@ -2084,6 +2175,7 @@ app.get(
       similarity,
       status: percent >= 50 ? 'passed' : 'failed',
       scoreBreakdown,
+      grade_results: scoreBreakdown,
       items: buildQuestionReviewItems({ assignment, submission }),
     });
   })
@@ -2120,6 +2212,9 @@ app.get(
       title: submission.assignmentTitle || assignment?.title || 'Untitled',
       score: getSubmissionScore(submission),
       similarity: getSubmissionSimilarity(submission),
+      grade_results: Array.isArray(submission.scoreBreakdown)
+        ? submission.scoreBreakdown.map(sanitizeGradeResultForReview)
+        : [],
       items: reviewItems,
     });
   })
@@ -2535,6 +2630,9 @@ app.get(
       score: getSubmissionScore(submission),
       similarity: getSubmissionSimilarity(submission),
       status: submission.status || 'submitted',
+      grade_results: Array.isArray(submission.scoreBreakdown)
+        ? submission.scoreBreakdown.map(sanitizeGradeResultForReview)
+        : [],
       items,
     });
   })
@@ -3380,6 +3478,109 @@ app.get(
   })
 );
 
+app.get(
+  '/doctor/materials',
+  auth,
+  allowRoles('doctor', 'admin'),
+  asyncRoute(async (req, res) => {
+    const db = getDbOrFail();
+    const course = normalizeCourseName(req.query.course);
+    const doctorIds = buildIdMatchValues(req.user.id);
+    const query = {
+      ...(req.user.role === 'admin' ? {} : { doctorId: { $in: doctorIds } }),
+      ...(course ? { course } : {}),
+    };
+    const materials = await db.collection('course_materials').find(query).sort({ createdAt: -1 }).toArray();
+    return res.json({ items: buildMaterialSummary(materials) });
+  })
+);
+
+app.post(
+  '/doctor/materials',
+  auth,
+  allowRoles('doctor', 'admin'),
+  upload.any(),
+  asyncRoute(async (req, res) => {
+    const db = getDbOrFail();
+    const course = normalizeCourseName(req.body.course || req.body.course_id || req.body.courseId);
+    if (!course) {
+      return res.status(400).json({ message: "Missing 'course'." });
+    }
+
+    const files = (req.files || []).filter((f) => /^(files|file|material|materials|images|image)(\[\])?(\d+)?$/i.test(f.fieldname));
+    const materialText = String(req.body.materialText || req.body.text || req.body.content || '').trim();
+    if (!files.length && !materialText) {
+      return res.status(400).json({ message: "Provide material files or 'materialText'." });
+    }
+
+    const now = new Date();
+    let gradingPayload = null;
+    let gradingUploadStatus = 'skipped';
+    let gradingUploadError = null;
+
+    if (gradingApiUrl && files.length) {
+      const form = new FormData();
+      form.append('course_id', course);
+      for (const file of files) {
+        form.append('files', new Blob([file.buffer], { type: file.mimetype }), file.originalname);
+      }
+      try {
+        const response = await fetch(`${gradingApiUrl}/upload-material`, { method: 'POST', body: form });
+        gradingPayload = await response.json().catch(() => ({}));
+        gradingUploadStatus = response.ok ? 'uploaded' : 'failed';
+        if (!response.ok) gradingUploadError = gradingPayload;
+      } catch (err) {
+        gradingUploadStatus = 'failed';
+        gradingUploadError = err.message;
+      }
+    }
+
+    const doc = {
+      doctorId: parseObjectId(req.user.id) || req.user.id,
+      doctorEmail: req.user.email || '',
+      course,
+      title: req.body.title || req.body.materialName || req.body.name || `${course} material`,
+      description: req.body.description || '',
+      materialText,
+      files: files.map((file) => ({
+        ...fileMetadata(file),
+        uploadedAt: now,
+      })),
+      gradingUploadStatus,
+      gradingUploadError,
+      gradingPayload,
+      createdAt: now,
+      updatedAt: now,
+    };
+    const result = await db.collection('course_materials').insertOne(doc);
+
+    return res.status(201).json({
+      message: 'Course material saved',
+      material: buildMaterialSummary([{ ...doc, _id: result.insertedId }])[0],
+      gradingUploadStatus,
+    });
+  })
+);
+
+app.delete(
+  '/doctor/materials/:id',
+  auth,
+  allowRoles('doctor', 'admin'),
+  asyncRoute(async (req, res) => {
+    const db = getDbOrFail();
+    const _id = parseObjectId(req.params.id);
+    if (!_id) return res.status(400).json({ message: 'Invalid material id' });
+    const doctorIds = buildIdMatchValues(req.user.id);
+    const query = {
+      _id,
+      ...(req.user.role === 'admin' ? {} : { doctorId: { $in: doctorIds } }),
+    };
+    const result = await db.collection('course_materials').deleteOne(query);
+    if (!result.deletedCount) return res.status(404).json({ message: 'Material not found' });
+    return res.json({ message: 'Course material deleted' });
+  })
+);
+
 app.post(
   '/grading/upload-material',
   auth,
@@ -3466,6 +3667,11 @@ app.post(
         body: JSON.stringify({
           course_id: req.body.course_id || req.body.courseId || req.body.course || null,
           linked_questions: req.body.linked_questions,
+          materials: Array.isArray(req.body.materials) ? req.body.materials : [],
+          course_materials: Array.isArray(req.body.course_materials) ? req.body.course_materials : [],
+          has_course_material: Boolean(req.body.has_course_material),
+          has_model_answer: Boolean(req.body.has_model_answer),
+          grading_strategy: req.body.grading_strategy || req.body.gradingStrategy || undefined,
         }),
       });
       const payload = await response.json().catch(() => ({}));
