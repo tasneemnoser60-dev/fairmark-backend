@@ -254,7 +254,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"title\": \"Quiz Smoke\",\n  \"description\": \"Smoke assignment\",\n  \"assignmentText\": \"Answer all questions\",\n  \"totalMark\": 20,\n  \"dueDate\": \"2026-12-01T12:00:00.000Z\"\n}"
+              "raw": "{\n  \"title\": \"Quiz Smoke\",\n  \"description\": \"Smoke assignment\",\n  \"assignmentText\": \"Answer all questions\",\n  \"totalMark\": 20,\n  \"dueDate\": \"2026-12-01T12:00:00.000Z\",\n  \"course\": \"AI\"\n}"
             },
             "url": "{{baseUrl}}/assignments"
           },
@@ -268,7 +268,8 @@
                   "  pm.expect([200, 201]).to.include(pm.response.code);",
                   "});",
                   "const json = pm.response.json();",
-                  "if (json && json._id) pm.collectionVariables.set('assignmentId', json._id);"
+                  "if (json && json._id) pm.collectionVariables.set('assignmentId', json._id);",
+                  "pm.test('Assignment course stored', function () { pm.expect(json.course).to.eql('AI'); });"
                 ]
               }
             }
