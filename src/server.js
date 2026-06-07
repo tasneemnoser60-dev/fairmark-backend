@@ -361,11 +361,23 @@ const normalizeReviewAnswer = (value) => (isNotAttemptedAnswer(value) ? '' : Str
 
 const sanitizeGradeResultForReview = (item = {}) => {
   const studentAnswer = getItemStudentAnswer(item);
+  const score = getItemScore(item);
+  const maxScore = firstFiniteNumber(item.max_score, item.maxScore, item.outOf, item.points);
+  const attempted = !isNotAttemptedAnswer(studentAnswer);
+  const isCorrect = attempted && score !== null && maxScore !== null ? score >= maxScore : false;
   return {
     ...item,
     student_answer: normalizeReviewAnswer(studentAnswer),
     studentAnswer: normalizeReviewAnswer(studentAnswer),
-    answerStatus: isNotAttemptedAnswer(studentAnswer) ? 'not_attempted' : 'answered',
+    correctAnswer: item.correct_answer ?? item.correctAnswer ?? '',
+    gradingMode: item.grading_mode || item.gradingMode || '',
+    justification: item.justification || item.feedback || item.reasoning || '',
+    maxScore,
+    needsManualReview: Boolean(item.needs_manual_review ?? item.needsManualReview),
+    aiDetection: item.ai_detection ?? item.aiDetection ?? null,
+    answerStatus: attempted ? 'answered' : 'not_attempted',
+    isCorrect,
+    resultStatus: !attempted ? 'not_attempted' : isCorrect ? 'correct' : 'incorrect',
   };
 };
 
@@ -583,11 +595,14 @@ const buildQuestionReviewItems = ({ assignment = {}, submission = {} }) => {
     const result = byBreakdownQ.get(key) || byBreakdownQ.get(idToString(index + 1)) || breakdown[index] || {};
     const score = getItemScore(answer || {}) ?? getItemScore(result);
     const similarity = getItemSimilarity(answer || {}) ?? getItemSimilarity(result);
+    const maxScore = firstFiniteNumber(q.points, q.mark, q.marks, result.outOf, result.max_score, result.maxScore);
     const studentAnswer =
       getItemStudentAnswer(answer || {}) ||
       getItemStudentAnswer(result) ||
       (questions.length === 1 ? String(submission.answerText || '').trim() : '');
     const cleanedStudentAnswer = normalizeReviewAnswer(studentAnswer);
+    const answerStatus = isNotAttemptedAnswer(studentAnswer) ? 'not_attempted' : 'answered';
+    const isCorrect = answerStatus === 'answered' && score !== null && maxScore !== null ? score >= maxScore : false;
     const questionText =
       q.text ||
       q.question ||
@@ -602,17 +617,19 @@ const buildQuestionReviewItems = ({ assignment = {}, submission = {} }) => {
       question: questionText,
       studentAnswer: cleanedStudentAnswer,
       answer: cleanedStudentAnswer,
-      answerStatus: isNotAttemptedAnswer(studentAnswer) ? 'not_attempted' : 'answered',
+      correctAnswer: result.correct_answer ?? result.correctAnswer ?? q.correct_answer ?? q.correctAnswer ?? '',
+      answerStatus,
       score,
       similarity,
-      feedback: answer?.feedback || result.feedback || result.reasoning || '',
-      maxScore: firstFiniteNumber(q.points, q.mark, q.marks, result.outOf, result.max_score, result.maxScore),
-      status:
-        score !== null
-          ? 'ai_graded'
-          : similarity !== null
-            ? 'similarity_checked'
-            : 'submitted',
+      feedback: result.justification || answer?.feedback || result.feedback || result.reasoning || '',
+      justification: result.justification || answer?.feedback || result.feedback || result.reasoning || '',
+      gradingMode: result.grading_mode || result.gradingMode || submission.gradingSource || '',
+      aiDetection: result.ai_detection ?? result.aiDetection ?? null,
+      needsManualReview: Boolean(result.needs_manual_review ?? result.needsManualReview),
+      maxScore,
+      isCorrect,
+      resultStatus: answerStatus === 'not_attempted' ? 'not_attempted' : isCorrect ? 'correct' : 'incorrect',
+      status: score !== null ? 'ai_graded' : similarity !== null ? 'similarity_checked' : 'submitted',
     };
   });
 };
