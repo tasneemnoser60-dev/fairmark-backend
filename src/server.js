@@ -393,6 +393,27 @@ const buildIdMatchValues = (value) => {
   return [...new Map(values.map((v) => [idToString(v) || String(v), v])).values()];
 };
 
+const looksLikeEmail = (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || '').trim());
+
+const pickDisplayName = (...values) => {
+  const cleanValues = values.map((v) => String(v || '').trim()).filter(Boolean);
+  return cleanValues.find((v) => !looksLikeEmail(v)) || cleanValues[0] || 'Student';
+};
+
+const getStudentIdentityForSubmission = async (db, submission = {}) => {
+  const filters = [
+    ...buildIdMatchValues(submission.studentId).map((studentId) => ({ _id: studentId })),
+    ...(submission.studentEmail ? [{ email: normalizeEmail(submission.studentEmail) }] : []),
+  ];
+  const user = filters.length ? await db.collection('users').findOne({ $or: filters }) : null;
+  const email = submission.studentEmail || user?.email || '';
+  return {
+    id: idToString(submission.studentId || user?._id),
+    name: pickDisplayName(submission.studentName, user?.name, email),
+    email,
+  };
+};
+
 const getCourseMaterialsForAssignment = async (db, assignment = {}) => {
   const course = normalizeCourseName(getCourseIdForPipeline(assignment));
   if (!course) return [];
@@ -1531,10 +1552,12 @@ app.post(
 	              ...fileMetadata(file),
 	              uploadedAt: new Date(),
 	            })),
-	            vlmExamError: vlmError.message,
-	            vlmExamRaw: vlmError.details || vlmExam || null,
-	            updatedAt: new Date(),
-	          },
+		            vlmExamError: vlmError.message,
+		            vlmExamRaw: vlmError.details || vlmExam || null,
+		            extractionStatus: 'failed',
+		            questionsSource: 'vlm',
+		            updatedAt: new Date(),
+		          },
 	        }
 	      );
 	      return res.status(vlmError.status).json({
@@ -1558,9 +1581,15 @@ app.post(
             uploadedAt: new Date(),
           })),
           ...(vlmExam && !vlmExam.error && Array.isArray(vlmExam.questions) && vlmExam.questions.length
-            ? { questions: vlmExam.questions, vlmExam }
+            ? {
+                questions: vlmExam.questions,
+                vlmExam,
+                extractionStatus: 'extracted',
+                questionsSource: 'vlm',
+                questionsExtractedAt: new Date(),
+              }
             : vlmExam?.error
-              ? { vlmExamError: vlmExam.error }
+              ? { vlmExamError: vlmExam.error, extractionStatus: 'failed' }
               : {}),
           updatedAt: new Date(),
         },
@@ -1622,10 +1651,12 @@ app.post(
 	              ...fileMetadata(file),
 	              uploadedAt: new Date(),
 	            })),
-	            vlmExamError: vlmError.message,
-	            vlmExamRaw: vlmError.details || vlmExam || null,
-	            updatedAt: new Date(),
-	          },
+		            vlmExamError: vlmError.message,
+		            vlmExamRaw: vlmError.details || vlmExam || null,
+		            extractionStatus: 'failed',
+		            questionsSource: 'vlm',
+		            updatedAt: new Date(),
+		          },
 	        }
 	      );
 	      return res.status(vlmError.status).json({
@@ -1649,9 +1680,15 @@ app.post(
             uploadedAt: new Date(),
           })),
           ...(vlmExam && !vlmExam.error && Array.isArray(vlmExam.questions) && vlmExam.questions.length
-            ? { questions: vlmExam.questions, vlmExam }
+            ? {
+                questions: vlmExam.questions,
+                vlmExam,
+                extractionStatus: 'extracted',
+                questionsSource: 'vlm',
+                questionsExtractedAt: new Date(),
+              }
             : vlmExam?.error
-              ? { vlmExamError: vlmExam.error }
+              ? { vlmExamError: vlmExam.error, extractionStatus: 'failed' }
               : {}),
           updatedAt: new Date(),
         },
@@ -1748,6 +1785,8 @@ app.post(
         answerText: req.body.answerText || existingSubmission.answerText || '',
         course: getCourseIdForPipeline(assignment),
         assignmentCourse: getCourseIdForPipeline(assignment),
+        studentName: pickDisplayName(req.user.name, req.user.email),
+        studentEmail: req.user.email,
         status: 'submitted',
         updatedAt: now,
       };
@@ -1780,6 +1819,7 @@ app.post(
       course: getCourseIdForPipeline(assignment),
       assignmentCourse: getCourseIdForPipeline(assignment),
       studentId: studentObjectId || req.user.id,
+      studentName: pickDisplayName(req.user.name, req.user.email),
       studentEmail: req.user.email,
       answerText: req.body.answerText || '',
       status: 'submitted',
@@ -2462,6 +2502,7 @@ app.post(
       assignmentId,
       assignmentTitle: assignment.title,
       studentId: studentObjectId || req.user.id,
+      studentName: pickDisplayName(req.user.name, req.user.email),
       studentEmail: req.user.email,
       answerText: String(req.body.answerText || '').trim(),
       status: 'submitted',
@@ -2634,16 +2675,21 @@ app.get(
     const gradedCount = submissions.filter((s) => s.status === 'graded').length;
     const pendingCount = attemptedCount - gradedCount;
 
-    const items = submissions.map((s) => ({
-      submissionId: idToString(s._id),
-      studentId: idToString(s.studentId),
-      studentName: s.studentName || s.studentEmail || 'Student',
-      studentEmail: s.studentEmail || '',
-      status: s.status === 'graded' ? 'ai_graded' : s.status === 'submitted' ? 'submitted' : s.status,
-      score: getSubmissionScore(s),
-      similarity: getSubmissionSimilarity(s),
-      action: 'review_submission',
-    }));
+    const items = await Promise.all(
+      submissions.map(async (s) => {
+        const student = await getStudentIdentityForSubmission(db, s);
+        return {
+          submissionId: idToString(s._id),
+          studentId: student.id,
+          studentName: student.name,
+          studentEmail: student.email,
+          status: s.status === 'graded' ? 'ai_graded' : s.status === 'submitted' ? 'submitted' : s.status,
+          score: getSubmissionScore(s),
+          similarity: getSubmissionSimilarity(s),
+          action: 'review_submission',
+        };
+      })
+    );
 
     return res.json({
       assignmentId: idToString(assignmentId),
@@ -2785,16 +2831,21 @@ app.get(
     const gradedCount = submissions.filter((s) => s.status === 'graded').length;
     const pendingCount = attemptedCount - gradedCount;
 
-    const items = submissions.map((s) => ({
-      submissionId: idToString(s._id),
-      studentId: idToString(s.studentId),
-      studentName: s.studentName || s.studentEmail || 'Student',
-      studentEmail: s.studentEmail || '',
-      status: s.status === 'graded' ? 'ai_graded' : s.status === 'submitted' ? 'submitted' : s.status,
-      score: getSubmissionScore(s),
-      similarity: getSubmissionSimilarity(s),
-      action: 'review_submission',
-    }));
+    const items = await Promise.all(
+      submissions.map(async (s) => {
+        const student = await getStudentIdentityForSubmission(db, s);
+        return {
+          submissionId: idToString(s._id),
+          studentId: student.id,
+          studentName: student.name,
+          studentEmail: student.email,
+          status: s.status === 'graded' ? 'ai_graded' : s.status === 'submitted' ? 'submitted' : s.status,
+          score: getSubmissionScore(s),
+          similarity: getSubmissionSimilarity(s),
+          action: 'review_submission',
+        };
+      })
+    );
 
     return res.json({
       examId: idToString(assignmentId),
@@ -2834,17 +2885,14 @@ app.get(
     if (!access.ok) return res.status(access.status).json({ message: access.message });
 
     const items = buildQuestionReviewItems({ assignment, submission });
+    const student = await getStudentIdentityForSubmission(db, submission);
 
     return res.json({
       submissionId: idToString(submission._id),
       assignmentId: idToString(submission.assignmentId),
       assignmentTitle: submission.assignmentTitle || assignment?.title || 'Untitled',
       course: submission.course || getCourseIdForPipeline(assignment),
-      student: {
-        id: idToString(submission.studentId),
-        name: submission.studentName || submission.studentEmail || 'Student',
-        email: submission.studentEmail || '',
-      },
+      student,
       score: getSubmissionScore(submission),
       similarity: getSubmissionSimilarity(submission),
       status: submission.status || 'submitted',
@@ -2942,7 +2990,8 @@ app.get(
       : 0;
 
     const sortBy = String(req.query.sortBy || 'score').toLowerCase();
-    const rows = submissions.map((s) => {
+    const rows = await Promise.all(submissions.map(async (s) => {
+      const student = await getStudentIdentityForSubmission(db, s);
       const similarity =
         typeof s.similarity === 'number'
           ? s.similarity
@@ -2954,14 +3003,14 @@ app.get(
             : null;
       return {
         submissionId: idToString(s._id),
-        studentId: idToString(s.studentId),
-        studentName: s.studentName || s.studentEmail || 'Student',
+        studentId: student.id,
+        studentName: student.name,
         score: typeof s.score === 'number' ? s.score : null,
         outOf: totalMark,
         similarity: similarity !== null ? Number(similarity.toFixed(2)) : null,
         action: 'view_submission',
       };
-    });
+    }));
 
     if (sortBy === 'name') {
       rows.sort((a, b) => String(a.studentName).localeCompare(String(b.studentName)));
@@ -3339,6 +3388,8 @@ app.post(
           $set: {
             answers,
             answerText: answers.map((a) => a.answer).filter(Boolean).join('\n\n'),
+            studentName: pickDisplayName(req.user.name, req.user.email),
+            studentEmail: req.user.email,
             status: existingSubmission.status === 'graded' ? 'graded' : 'in_progress',
             updatedAt: now,
           },
@@ -3356,6 +3407,7 @@ app.post(
       assignmentId,
       assignmentTitle: assignment.title,
       studentId: studentObjectId || req.user.id,
+      studentName: pickDisplayName(req.user.name, req.user.email),
       studentEmail: req.user.email,
       answerText: answers.map((a) => a.answer).filter(Boolean).join('\n\n'),
       answers,
@@ -4073,14 +4125,17 @@ app.get(
       totalMark: assignment?.totalMark ?? null,
       attemptedCount,
       submissions: { graded: gradedCount, pending: attemptedCount - gradedCount },
-      items: submissions.map((s) => ({
-        submissionId: idToString(s._id),
-        studentId: idToString(s.studentId),
-        studentName: s.studentName || s.studentEmail || 'Student',
-        studentEmail: s.studentEmail || '',
-        status: s.status === 'graded' ? 'ai_graded' : s.status === 'submitted' ? 'submitted' : s.status,
-        score: typeof s.score === 'number' ? s.score : null,
-        action: 'review_submission',
+      items: await Promise.all(submissions.map(async (s) => {
+        const student = await getStudentIdentityForSubmission(db, s);
+        return {
+          submissionId: idToString(s._id),
+          studentId: student.id,
+          studentName: student.name,
+          studentEmail: student.email,
+          status: s.status === 'graded' ? 'ai_graded' : s.status === 'submitted' ? 'submitted' : s.status,
+          score: typeof s.score === 'number' ? s.score : null,
+          action: 'review_submission',
+        };
       })),
     });
   })
