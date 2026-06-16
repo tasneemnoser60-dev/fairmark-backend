@@ -277,6 +277,20 @@ const getAssignmentStatus = (assignment) =>
   new Date(assignment?.dueDate || 0) >= new Date() ? 'open' : 'closed';
 const isExamAssignment = (assignment) => getAssignmentType(assignment) === 'exam';
 const isPublishedForStudents = (assignment) => Boolean(assignment?.resultsPublished);
+const getAssignmentTotalMark = (assignment, fallback = 100) => Number(assignment?.totalMark ?? fallback);
+
+const getSubmissionPercentage = (submission, assignment) => {
+  const score = getSubmissionScore(submission);
+  const totalMark = getAssignmentTotalMark(assignment, 100);
+  if (score === null || !Number.isFinite(totalMark) || totalMark <= 0) return null;
+  return Number(((score / totalMark) * 100).toFixed(2));
+};
+
+const getSubmissionResultStatus = (submission, assignment) => {
+  const percentage = getSubmissionPercentage(submission, assignment);
+  if (percentage === null) return null;
+  return percentage >= 50 ? 'passed' : 'failed';
+};
 
 const allowedUploadMimeTypes = new Set([
   'image/jpeg',
@@ -605,7 +619,7 @@ const buildQuestionReviewItems = ({ assignment = {}, submission = {} }) => {
     const answer = byAnswerQ.get(key) || byAnswerQ.get(idToString(index + 1)) || answers[index] || null;
     const result = byBreakdownQ.get(key) || byBreakdownQ.get(idToString(index + 1)) || breakdown[index] || {};
     const score = getItemScore(result) ?? getItemScore(answer || {});
-    const similarity = getItemSimilarity(answer || {}) ?? getItemSimilarity(result);
+    const similarity = getItemSimilarity(answer || {}) ?? getItemSimilarity(result) ?? getSubmissionSimilarity(submission);
     const maxScore = firstFiniteNumber(q.points, q.mark, q.marks, result.outOf, result.max_score, result.maxScore);
     const studentAnswer =
       getItemStudentAnswer(answer || {}) ||
@@ -2214,14 +2228,21 @@ app.get(
       const status = published || rawStatus === 'not_submitted' ? rawStatus : 'submitted';
       const score = published ? getSubmissionScore(sub) : null;
       const similarity = published ? getSubmissionSimilarity(sub) : null;
+      const percentage = published ? getSubmissionPercentage(sub, a) : null;
+      const resultStatus = published ? getSubmissionResultStatus(sub, a) : null;
       return {
         assignmentId: idToString(a._id),
+        type: 'assignment',
+        kind: 'assignment',
         title: a.title || 'Untitled assignment',
         dueDate: a.dueDate,
         totalMark: a.totalMark ?? null,
+        passingPercentage: 50,
         resultsPublished: published,
         status,
         score,
+        percentage,
+        resultStatus,
         similarity,
         action: status === 'not_submitted' ? 'submit_answer' : published ? 'view_submission' : 'await_results',
       };
@@ -2259,14 +2280,21 @@ app.get('/api/student/assignments', auth, allowRoles('student'), asyncRoute(asyn
     const status = published || rawStatus === 'not_submitted' ? rawStatus : 'submitted';
     const score = published ? getSubmissionScore(sub) : null;
     const similarity = published ? getSubmissionSimilarity(sub) : null;
+    const percentage = published ? getSubmissionPercentage(sub, a) : null;
+    const resultStatus = published ? getSubmissionResultStatus(sub, a) : null;
     return {
       assignmentId: idToString(a._id),
+      type: 'assignment',
+      kind: 'assignment',
       title: a.title || 'Untitled assignment',
       dueDate: a.dueDate,
       totalMark: a.totalMark ?? null,
+      passingPercentage: 50,
       resultsPublished: published,
       status,
       score,
+      percentage,
+      resultStatus,
       similarity,
       action: status === 'not_submitted' ? 'submit_answer' : published ? 'view_submission' : 'await_results',
     };
@@ -2317,6 +2345,8 @@ app.get(
       const status = published || rawStatus === 'not_started' ? rawStatus : 'submitted';
       const score = published ? getSubmissionScore(sub) : null;
       const similarity = published ? getSubmissionSimilarity(sub) : null;
+      const percentage = published ? getSubmissionPercentage(sub, a) : null;
+      const resultStatus = published ? getSubmissionResultStatus(sub, a) : null;
       const action =
         status === 'not_started'
           ? 'start_exam'
@@ -2326,12 +2356,17 @@ app.get(
       return {
         examId: idToString(a._id),
         assignmentId: idToString(a._id),
+        type: 'exam',
+        kind: 'exam',
         title: a.title || 'Untitled exam',
         dueDate: a.dueDate,
         totalMark: a.totalMark ?? null,
+        passingPercentage: 50,
         resultsPublished: published,
         status,
         score,
+        percentage,
+        resultStatus,
         similarity,
         action,
       };
@@ -2365,16 +2400,26 @@ app.get(
     });
 
     const total = submissions.length;
-    const passed = submissions.filter((s) => typeof s.score === 'number' && s.score >= 50).length;
+    const passed = submissions.filter((s) => {
+      const assignment = byAssignmentId.get(idToString(getSubmissionAssignmentObjectId(s)));
+      return getSubmissionResultStatus(s, assignment) === 'passed';
+    }).length;
     const failed = total - passed;
-    const items = submissions.map((s) => ({
-      submissionId: idToString(s._id),
-      assignmentId: idToString(s.assignmentId),
-      title: s.assignmentTitle || 'Untitled',
-      score: s.score,
-      percentage: typeof s.score === 'number' ? Number(s.score.toFixed(2)) : null,
-      status: typeof s.score === 'number' && s.score >= 50 ? 'passed' : 'failed',
-    }));
+    const items = submissions.map((s) => {
+      const assignment = byAssignmentId.get(idToString(getSubmissionAssignmentObjectId(s)));
+      const score = getSubmissionScore(s);
+      return {
+        submissionId: idToString(s._id),
+        assignmentId: idToString(s.assignmentId),
+        type: getAssignmentType(assignment),
+        kind: getAssignmentType(assignment),
+        title: s.assignmentTitle || assignment?.title || 'Untitled',
+        score,
+        totalMark: getAssignmentTotalMark(assignment, 100),
+        percentage: getSubmissionPercentage(s, assignment),
+        status: getSubmissionResultStatus(s, assignment),
+      };
+    });
 
     return res.json({
       summary: { total, passed, failed },
@@ -2423,6 +2468,8 @@ app.get(
     return res.json({
       submissionId: idToString(submission._id),
       assignmentId: idToString(submission.assignmentId),
+      type: getAssignmentType(assignment),
+      kind: getAssignmentType(assignment),
       title: submission.assignmentTitle || assignment?.title || 'Untitled',
       course: submission.course || getCourseIdForPipeline(assignment),
       score,
@@ -2461,13 +2508,19 @@ app.get(
     }
 
     const reviewItems = buildQuestionReviewItems({ assignment, submission });
+    const score = getSubmissionScore(submission);
 
     return res.json({
       submissionId: idToString(submission._id),
       assignmentId: idToString(submission.assignmentId),
+      type: getAssignmentType(assignment),
+      kind: getAssignmentType(assignment),
       title: submission.assignmentTitle || assignment?.title || 'Untitled',
       course: submission.course || getCourseIdForPipeline(assignment),
-      score: getSubmissionScore(submission),
+      score,
+      totalMark: getAssignmentTotalMark(assignment, 100),
+      percentage: getSubmissionPercentage(submission, assignment),
+      status: getSubmissionResultStatus(submission, assignment),
       similarity: getSubmissionSimilarity(submission),
       grade_results: Array.isArray(submission.scoreBreakdown)
         ? submission.scoreBreakdown.map(sanitizeGradeResultForReview)
