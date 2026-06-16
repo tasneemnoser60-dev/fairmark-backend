@@ -550,6 +550,13 @@ const getItemQuestionText = (item = {}) =>
       ''
   ).trim();
 
+const normalizeQuestionTextKey = (value) =>
+  String(value || '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .replace(/[^\p{L}\p{N}\s]/gu, '')
+    .trim();
+
 const getItemStudentAnswer = (item = {}) =>
   String(
     item.student_answer ??
@@ -561,6 +568,11 @@ const getItemStudentAnswer = (item = {}) =>
       item.text ??
       ''
   ).trim();
+
+const isNotAttemptedFeedback = (value) => {
+  const text = String(value || '').trim().toLowerCase();
+  return text.includes('question not attempted') || text.includes('not attempted');
+};
 
 const getSubmissionScore = (submission) => {
   if (!submission) return null;
@@ -613,11 +625,32 @@ const buildQuestionReviewItems = ({ assignment = {}, submission = {} }) => {
       ];
   const byAnswerQ = new Map(answers.map((a) => [getQuestionResultKey(a), a]));
   const byBreakdownQ = new Map(breakdown.map((b) => [getQuestionResultKey(b), b]));
+  const byAnswerText = new Map(
+    answers
+      .map((a) => [normalizeQuestionTextKey(getItemQuestionText(a)), a])
+      .filter(([key]) => key)
+  );
+  const byBreakdownText = new Map(
+    breakdown
+      .map((b) => [normalizeQuestionTextKey(getItemQuestionText(b)), b])
+      .filter(([key]) => key)
+  );
 
   return questions.map((q, index) => {
     const key = idToString(q.id ?? q.question_id ?? index + 1);
-    const answer = byAnswerQ.get(key) || byAnswerQ.get(idToString(index + 1)) || answers[index] || null;
-    const result = byBreakdownQ.get(key) || byBreakdownQ.get(idToString(index + 1)) || breakdown[index] || {};
+    const questionTextKey = normalizeQuestionTextKey(q.text || q.question || getItemQuestionText(q));
+    const answer =
+      byAnswerQ.get(key) ||
+      byAnswerText.get(questionTextKey) ||
+      byAnswerQ.get(idToString(index + 1)) ||
+      answers[index] ||
+      null;
+    const result =
+      byBreakdownQ.get(key) ||
+      byBreakdownText.get(questionTextKey) ||
+      byBreakdownQ.get(idToString(index + 1)) ||
+      breakdown[index] ||
+      {};
     const score = getItemScore(result) ?? getItemScore(answer || {});
     const similarity = getItemSimilarity(answer || {}) ?? getItemSimilarity(result) ?? getSubmissionSimilarity(submission);
     const maxScore = firstFiniteNumber(q.points, q.mark, q.marks, result.outOf, result.max_score, result.maxScore);
@@ -637,6 +670,11 @@ const buildQuestionReviewItems = ({ assignment = {}, submission = {} }) => {
       assignment?.description ||
       assignment?.title ||
       'Question';
+    const rawFeedback = result.justification || answer?.feedback || result.feedback || result.reasoning || '';
+    const feedback =
+      answerStatus === 'answered' && isNotAttemptedFeedback(rawFeedback)
+        ? 'Answer was extracted, but the grading service marked this question as not attempted. Needs manual review.'
+        : rawFeedback;
     return {
       questionId: q.id ?? q.question_id ?? index + 1,
       question: questionText,
@@ -646,11 +684,12 @@ const buildQuestionReviewItems = ({ assignment = {}, submission = {} }) => {
       answerStatus,
       score,
       similarity,
-      feedback: result.justification || answer?.feedback || result.feedback || result.reasoning || '',
-      justification: result.justification || answer?.feedback || result.feedback || result.reasoning || '',
+      feedback,
+      justification: feedback,
       gradingMode: result.grading_mode || result.gradingMode || submission.gradingSource || '',
       aiDetection: result.ai_detection ?? result.aiDetection ?? null,
-      needsManualReview: Boolean(result.needs_manual_review ?? result.needsManualReview),
+      needsManualReview: Boolean(result.needs_manual_review ?? result.needsManualReview) ||
+        (answerStatus === 'answered' && isNotAttemptedFeedback(rawFeedback)),
       maxScore,
       isCorrect,
       resultStatus: answerStatus === 'not_attempted' ? 'not_attempted' : isCorrect ? 'correct' : 'incorrect',
