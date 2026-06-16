@@ -276,6 +276,14 @@ const getAssignmentType = (assignment) => assignment?.type || assignment?.kind |
 const getAssignmentStatus = (assignment) =>
   new Date(assignment?.dueDate || 0) >= new Date() ? 'open' : 'closed';
 const isExamAssignment = (assignment) => getAssignmentType(assignment) === 'exam';
+const assignmentOnlyFilter = { $nor: [{ type: 'exam' }, { kind: 'exam' }] };
+const examOnlyFilter = { $or: [{ type: 'exam' }, { kind: 'exam' }] };
+const andFilters = (...filters) => {
+  const clean = filters.filter((filter) => filter && Object.keys(filter).length > 0);
+  if (!clean.length) return {};
+  if (clean.length === 1) return clean[0];
+  return { $and: clean };
+};
 const isPublishedForStudents = (assignment) => Boolean(assignment?.resultsPublished);
 const getAssignmentTotalMark = (assignment, fallback = 100) => Number(assignment?.totalMark ?? fallback);
 
@@ -1583,46 +1591,46 @@ app.post(
     const uploaded = uploadedFiles[0] || null;
     const validType = validateUploadFiles(uploadedFiles);
     if (!validType.ok) return res.status(400).json({ message: validType.message });
-	    let vlmExam = null;
-	    if (vlmApiUrl && uploadedFiles.length) {
-	      try {
-	        vlmExam = await callVlmProcessExam(uploadedFiles);
-	      } catch (err) {
-	        vlmExam = { error: err.message };
-	      }
-	    }
-	    const vlmError = buildVlmQuestionExtractionError(vlmExam);
-	    if (vlmError) {
-	      await db.collection('assignments').updateOne(
-	        { _id },
-	        {
-	          $set: {
-	            examFile: {
-	              ...fileMetadata(uploaded),
-	              uploadedAt: new Date(),
-	            },
-	            examFiles: uploadedFiles.map((file) => ({
-	              ...fileMetadata(file),
-	              uploadedAt: new Date(),
-	            })),
-		            vlmExamError: vlmError.message,
-		            vlmExamRaw: vlmError.details || vlmExam || null,
-		            extractionStatus: 'failed',
-		            questionsSource: 'vlm',
-		            updatedAt: new Date(),
-		          },
-	        }
-	      );
-	      return res.status(vlmError.status).json({
-	        ok: false,
-	        code: 'VLM_QUESTIONS_NOT_EXTRACTED',
-	        message: vlmError.message,
-	        details: vlmError.details || null,
-	      });
-	    }
+      let vlmExam = null;
+      if (vlmApiUrl && uploadedFiles.length) {
+        try {
+          vlmExam = await callVlmProcessExam(uploadedFiles);
+        } catch (err) {
+          vlmExam = { error: err.message };
+        }
+      }
+      const vlmError = buildVlmQuestionExtractionError(vlmExam);
+      if (vlmError) {
+        await db.collection('assignments').updateOne(
+          { _id },
+          {
+            $set: {
+              examFile: {
+                ...fileMetadata(uploaded),
+                uploadedAt: new Date(),
+              },
+              examFiles: uploadedFiles.map((file) => ({
+                ...fileMetadata(file),
+                uploadedAt: new Date(),
+              })),
+                vlmExamError: vlmError.message,
+                vlmExamRaw: vlmError.details || vlmExam || null,
+                extractionStatus: 'failed',
+                questionsSource: 'vlm',
+                updatedAt: new Date(),
+              },
+          }
+        );
+        return res.status(vlmError.status).json({
+          ok: false,
+          code: 'VLM_QUESTIONS_NOT_EXTRACTED',
+          message: vlmError.message,
+          details: vlmError.details || null,
+        });
+      }
 
-	    await db.collection('assignments').updateOne(
-	      { _id },
+      await db.collection('assignments').updateOne(
+        { _id },
       {
         $set: {
           examFile: {
@@ -1657,11 +1665,11 @@ app.post(
         ...fileMetadata(uploaded),
       },
       files: uploadedFiles.map(fileMetadata),
-	      count: uploadedFiles.length,
-	      questionsCount: Array.isArray(vlmExam?.questions) ? vlmExam.questions.length : 0,
-	      vlmExam,
-	    });
-	  })
+        count: uploadedFiles.length,
+        questionsCount: Array.isArray(vlmExam?.questions) ? vlmExam.questions.length : 0,
+        vlmExam,
+      });
+    })
 );
 
 app.post(
@@ -1682,46 +1690,46 @@ app.post(
     const uploaded = uploadedFiles[0] || null;
     const validType = validateUploadFiles(uploadedFiles);
     if (!validType.ok) return res.status(400).json({ message: validType.message });
-	    let vlmExam = null;
-	    if (vlmApiUrl && uploadedFiles.length) {
-	      try {
-	        vlmExam = await callVlmProcessExam(uploadedFiles);
-	      } catch (err) {
-	        vlmExam = { error: err.message };
-	      }
-	    }
-	    const vlmError = buildVlmQuestionExtractionError(vlmExam);
-	    if (vlmError) {
-	      await db.collection('assignments').updateOne(
-	        { _id },
-	        {
-	          $set: {
-	            examFile: {
-	              ...fileMetadata(uploaded),
-	              uploadedAt: new Date(),
-	            },
-	            examFiles: uploadedFiles.map((file) => ({
-	              ...fileMetadata(file),
-	              uploadedAt: new Date(),
-	            })),
-		            vlmExamError: vlmError.message,
-		            vlmExamRaw: vlmError.details || vlmExam || null,
-		            extractionStatus: 'failed',
-		            questionsSource: 'vlm',
-		            updatedAt: new Date(),
-		          },
-	        }
-	      );
-	      return res.status(vlmError.status).json({
-	        ok: false,
-	        code: 'VLM_QUESTIONS_NOT_EXTRACTED',
-	        message: vlmError.message,
-	        details: vlmError.details || null,
-	      });
-	    }
+      let vlmExam = null;
+      if (vlmApiUrl && uploadedFiles.length) {
+        try {
+          vlmExam = await callVlmProcessExam(uploadedFiles);
+        } catch (err) {
+          vlmExam = { error: err.message };
+        }
+      }
+      const vlmError = buildVlmQuestionExtractionError(vlmExam);
+      if (vlmError) {
+        await db.collection('assignments').updateOne(
+          { _id },
+          {
+            $set: {
+              examFile: {
+                ...fileMetadata(uploaded),
+                uploadedAt: new Date(),
+              },
+              examFiles: uploadedFiles.map((file) => ({
+                ...fileMetadata(file),
+                uploadedAt: new Date(),
+              })),
+                vlmExamError: vlmError.message,
+                vlmExamRaw: vlmError.details || vlmExam || null,
+                extractionStatus: 'failed',
+                questionsSource: 'vlm',
+                updatedAt: new Date(),
+              },
+          }
+        );
+        return res.status(vlmError.status).json({
+          ok: false,
+          code: 'VLM_QUESTIONS_NOT_EXTRACTED',
+          message: vlmError.message,
+          details: vlmError.details || null,
+        });
+      }
 
-	    await db.collection('assignments').updateOne(
-	      { _id },
+      await db.collection('assignments').updateOne(
+        { _id },
       {
         $set: {
           examFile: {
@@ -1756,11 +1764,11 @@ app.post(
       file: {
         ...fileMetadata(uploaded),
       },
-	      files: uploadedFiles.map(fileMetadata),
-	      count: uploadedFiles.length,
-	      questionsCount: Array.isArray(vlmExam?.questions) ? vlmExam.questions.length : 0,
-	      vlmExam,
-	    });
+        files: uploadedFiles.map(fileMetadata),
+        count: uploadedFiles.length,
+        questionsCount: Array.isArray(vlmExam?.questions) ? vlmExam.questions.length : 0,
+        vlmExam,
+      });
   })
 );
 
@@ -2244,14 +2252,12 @@ app.get(
     const studentCourses = Array.isArray(studentUser?.courses)
       ? studentUser.courses.map((c) => String(c).trim()).filter(Boolean)
       : [];
-    const assignments = await db
-      .collection('assignments')
-      .find({
-        $and: [
-          { $nor: [{ type: 'exam' }, { kind: 'exam' }] },
-          studentCourses.length ? { course: { $in: studentCourses } } : { _id: { $exists: false } },
-        ],
-      })
+      const assignments = await db
+        .collection('assignments')
+        .find(andFilters(
+          assignmentOnlyFilter,
+          studentCourses.length ? { course: { $in: studentCourses } } : { _id: { $exists: false } }
+        ))
       .sort({ createdAt: -1 })
       .toArray();
     const submissions = await db
@@ -2297,14 +2303,12 @@ app.get('/api/student/assignments', auth, allowRoles('student'), asyncRoute(asyn
   const studentCourses = Array.isArray(studentUser?.courses)
     ? studentUser.courses.map((c) => String(c).trim()).filter(Boolean)
     : [];
-  const assignments = await db
-    .collection('assignments')
-    .find({
-      $and: [
-        { $nor: [{ type: 'exam' }, { kind: 'exam' }] },
-        studentCourses.length ? { course: { $in: studentCourses } } : { _id: { $exists: false } },
-      ],
-    })
+    const assignments = await db
+      .collection('assignments')
+      .find(andFilters(
+        assignmentOnlyFilter,
+        studentCourses.length ? { course: { $in: studentCourses } } : { _id: { $exists: false } }
+      ))
     .sort({ createdAt: -1 })
     .toArray();
   const submissions = await db
@@ -2353,24 +2357,20 @@ app.get(
     const studentCourses = Array.isArray(studentUser?.courses)
       ? studentUser.courses.map((c) => String(c).trim()).filter(Boolean)
       : [];
-    const assignments = await db
-      .collection('assignments')
-      .find({
-        $and: [
-          { $or: [{ type: 'exam' }, { kind: 'exam' }] },
-          studentCourses.length ? { course: { $in: studentCourses } } : { _id: { $exists: false } },
-        ],
-      })
+      const assignments = await db
+        .collection('assignments')
+        .find(andFilters(
+          examOnlyFilter,
+          studentCourses.length ? { course: { $in: studentCourses } } : { _id: { $exists: false } }
+        ))
       .sort({ dueDate: 1 })
       .skip(skip)
       .limit(limit)
       .toArray();
-    const total = await db.collection('assignments').countDocuments({
-      $and: [
-        { $or: [{ type: 'exam' }, { kind: 'exam' }] },
-        studentCourses.length ? { course: { $in: studentCourses } } : { _id: { $exists: false } },
-      ],
-    });
+      const total = await db.collection('assignments').countDocuments(andFilters(
+        examOnlyFilter,
+        studentCourses.length ? { course: { $in: studentCourses } } : { _id: { $exists: false } }
+      ));
     const submissions = await db
       .collection('submissions')
       .find({ studentId: { $in: userIdAlternatives(req.user.id) } })
@@ -2661,18 +2661,18 @@ app.get(
   allowRoles('doctor', 'admin'),
   asyncRoute(async (req, res) => {
     const db = getDbOrFail();
-    const assignmentsQuery =
-      req.user.role === 'admin' ? {} : doctorOwnershipFilter(req.user);
-    const assignments = await db.collection('assignments').find(assignmentsQuery).sort({ dueDate: 1 }).toArray();
+      const ownershipQuery = req.user.role === 'admin' ? {} : doctorOwnershipFilter(req.user);
+      const assignments = await db.collection('assignments').find(ownershipQuery).sort({ dueDate: 1 }).toArray();
 
     const assignmentIds = assignments.flatMap((a) => [a._id, String(a._id)]);
     const submissions = assignmentIds.length
       ? await db.collection('submissions').find({ assignmentId: { $in: assignmentIds } }).toArray()
       : [];
     const pendingGrading = submissions.filter((s) => s.status !== 'graded').length;
-    const activeExams = assignments.filter((a) => new Date(a.dueDate) >= new Date()).length;
+      const examAssignments = assignments.filter(isExamAssignment);
+      const activeExams = examAssignments.filter((a) => new Date(a.dueDate) >= new Date()).length;
 
-    const recentExams = assignments.slice(0, 10).map((a) => {
+      const recentExams = examAssignments.slice(0, 10).map((a) => {
       const related = submissions.filter((s) => isSameId(s.assignmentId, a._id));
       const attemptedCount = related.length;
       const gradedCount = related.filter((s) => s.status === 'graded').length;
@@ -2711,9 +2711,11 @@ app.get(
   allowRoles('doctor', 'admin'),
   asyncRoute(async (req, res) => {
     const db = getDbOrFail();
-    const assignmentsQuery =
-      req.user.role === 'admin' ? {} : doctorOwnershipFilter(req.user);
-    const assignments = await db.collection('assignments').find(assignmentsQuery).sort({ createdAt: -1 }).toArray();
+      const assignmentsQuery = andFilters(
+        req.user.role === 'admin' ? {} : doctorOwnershipFilter(req.user),
+        assignmentOnlyFilter
+      );
+      const assignments = await db.collection('assignments').find(assignmentsQuery).sort({ createdAt: -1 }).toArray();
 
     const assignmentIds = assignments.flatMap((a) => [a._id, String(a._id)]);
     const submissions = assignmentIds.length
@@ -2727,7 +2729,8 @@ app.get(
       return {
         assignmentId: idToString(a._id),
         title: a.title || 'Untitled assignment',
-        type: getAssignmentType(a),
+          type: 'assignment',
+          kind: 'assignment',
         status: getAssignmentStatus(a),
         dueDate: a.dueDate,
         totalMark: a.totalMark ?? null,
@@ -2805,12 +2808,10 @@ app.get(
   auth,
   allowRoles('doctor', 'admin'),
   asyncRoute(async (req, res) => {
-    const db = getDbOrFail();
-    const { page, limit, skip } = parsePagination(req.query);
-    const ownershipQuery = req.user.role === 'admin' ? {} : doctorOwnershipFilter(req.user);
-    const examTypeQuery = { $or: [{ type: 'exam' }, { kind: 'exam' }] };
-    const assignmentsQuery =
-      Object.keys(ownershipQuery).length > 0 ? { $and: [ownershipQuery, examTypeQuery] } : examTypeQuery;
+      const db = getDbOrFail();
+      const { page, limit, skip } = parsePagination(req.query);
+      const ownershipQuery = req.user.role === 'admin' ? {} : doctorOwnershipFilter(req.user);
+      const assignmentsQuery = andFilters(ownershipQuery, examOnlyFilter);
     const [assignments, total] = await Promise.all([
       db.collection('assignments').find(assignmentsQuery).sort({ createdAt: -1 }).skip(skip).limit(limit).toArray(),
       db.collection('assignments').countDocuments(assignmentsQuery),
@@ -2829,7 +2830,8 @@ app.get(
         examId: idToString(a._id),
         assignmentId: idToString(a._id),
         title: a.title || 'Untitled exam',
-        type: getAssignmentType(a),
+          type: 'exam',
+          kind: 'exam',
         status: getAssignmentStatus(a),
         dueDate: a.dueDate,
         totalMark: a.totalMark ?? null,
@@ -3300,15 +3302,16 @@ app.get(
     const userId = parseObjectId(req.user.id);
     const user = userId ? await db.collection('users').findOne({ _id: userId }) : null;
 
-    const assignmentsQuery =
-      req.user.role === 'admin' ? {} : doctorOwnershipFilter(req.user);
-    const assignments = await db.collection('assignments').find(assignmentsQuery).toArray();
-    const assignmentIds = assignments.flatMap((a) => [a._id, String(a._id)]);
+      const ownershipQuery = req.user.role === 'admin' ? {} : doctorOwnershipFilter(req.user);
+      const assignments = await db.collection('assignments').find(ownershipQuery).toArray();
+      const assignmentDocs = assignments.filter((a) => !isExamAssignment(a));
+      const examDocs = assignments.filter(isExamAssignment);
+      const assignmentIds = assignments.flatMap((a) => [a._id, String(a._id)]);
     const submissions = assignmentIds.length
       ? await db.collection('submissions').find({ assignmentId: { $in: assignmentIds } }).toArray()
       : [];
 
-    const activeExams = assignments.filter((a) => new Date(a.dueDate) >= new Date()).length;
+      const activeExams = examDocs.filter((a) => new Date(a.dueDate) >= new Date()).length;
     const pendingGrading = submissions.filter((s) => s.status !== 'graded').length;
     const students = new Set(submissions.map((s) => idToString(s.studentId)).filter(Boolean)).size;
 
@@ -3322,7 +3325,7 @@ app.get(
       },
       stats: {
         activeExams,
-        assignments: assignments.length,
+          assignments: assignmentDocs.length,
         students,
         pendingGrading,
       },
