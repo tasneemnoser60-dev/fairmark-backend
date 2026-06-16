@@ -395,7 +395,15 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('Doctor assignments success', function () { pm.expect(pm.response.code).to.eql(200); });"
+                  "pm.test('Doctor assignments success', function () { pm.expect(pm.response.code).to.eql(200); });",
+                  "const json = pm.response.json();",
+                  "const items = Array.isArray(json.items) ? json.items : [];",
+                  "items.forEach((item) => {",
+                  "  pm.expect(item).to.have.property('assignmentId');",
+                  "  pm.expect(item).to.have.property('type', 'assignment');",
+                  "  pm.expect(item).to.have.property('kind', 'assignment');",
+                  "  pm.expect(item.type).to.not.eql('exam');",
+                  "});"
                 ]
               }
             }
@@ -421,6 +429,7 @@
                 "exec": [
                   "pm.test('Doctor assignment submissions success', function () { pm.expect(pm.response.code).to.eql(200); });",
                   "const json = pm.response.json();",
+                  "pm.test('Doctor assignment submissions are for assignment type', function () { pm.expect(json).to.have.property('type', 'assignment'); });",
                   "const first = (json.items || [])[0];",
                   "if (first) {",
                   "  pm.test('Doctor assignment submission exposes score/similarity', function () {",
@@ -943,13 +952,16 @@
                 "exec": [
                   "pm.test('Student assignments success', function () { pm.expect(pm.response.code).to.eql(200); });",
                   "const json = pm.response.json();",
-                  "const first = (json.items || [])[0];",
-                  "if (first) {",
-                  "  pm.test('Student assignment exposes score/similarity', function () {",
-                  "    pm.expect(first).to.have.property('score');",
-                  "    pm.expect(first).to.have.property('similarity');",
-                  "  });",
-                  "}"
+                  "const items = Array.isArray(json.items) ? json.items : [];",
+                  "items.forEach((item) => {",
+                  "  pm.expect(item).to.have.property('type', 'assignment');",
+                  "  pm.expect(item).to.have.property('kind', 'assignment');",
+                  "  pm.expect(item).to.have.property('score');",
+                  "  pm.expect(item).to.have.property('totalMark');",
+                  "  pm.expect(item).to.have.property('percentage');",
+                  "  pm.expect(item).to.have.property('resultStatus');",
+                  "  pm.expect(item).to.have.property('passingPercentage', 50);",
+                  "});"
                 ]
               }
             }
@@ -975,13 +987,16 @@
                 "exec": [
                   "pm.test('Student exams success', function () { pm.expect(pm.response.code).to.eql(200); });",
                   "const json = pm.response.json();",
-                  "const first = (json.items || [])[0];",
-                  "if (first) {",
-                  "  pm.test('Student exam exposes score/similarity', function () {",
-                  "    pm.expect(first).to.have.property('score');",
-                  "    pm.expect(first).to.have.property('similarity');",
-                  "  });",
-                  "}"
+                  "const items = Array.isArray(json.items) ? json.items : [];",
+                  "items.forEach((item) => {",
+                  "  pm.expect(item).to.have.property('type', 'exam');",
+                  "  pm.expect(item).to.have.property('kind', 'exam');",
+                  "  pm.expect(item).to.have.property('score');",
+                  "  pm.expect(item).to.have.property('totalMark');",
+                  "  pm.expect(item).to.have.property('percentage');",
+                  "  pm.expect(item).to.have.property('resultStatus');",
+                  "  pm.expect(item).to.have.property('passingPercentage', 50);",
+                  "});"
                 ]
               }
             }
@@ -1244,7 +1259,14 @@
                 "exec": [
                   "pm.test('Doctor exams success', function () { pm.expect(pm.response.code).to.eql(200); });",
                   "const json = pm.response.json();",
-                  "const first = Array.isArray(json?.items) ? json.items[0] : null;",
+                  "const items = Array.isArray(json?.items) ? json.items : [];",
+                  "items.forEach((item) => {",
+                  "  pm.expect(item).to.have.property('assignmentId');",
+                  "  pm.expect(item).to.have.property('examId');",
+                  "  pm.expect(item).to.have.property('type', 'exam');",
+                  "  pm.expect(item).to.have.property('kind', 'exam');",
+                  "});",
+                  "const first = items[0] || null;",
                   "const id = first?.examId || first?.assignmentId || pm.collectionVariables.get('examId') || '';",
                   "if (id) pm.collectionVariables.set('examId', id);",
                   "pm.test('Exam id exists for next requests', function () { pm.expect(pm.collectionVariables.get('examId')).to.be.a('string').and.not.empty; });"
@@ -1273,6 +1295,7 @@
                 "exec": [
                   "pm.test('Doctor exam submissions success', function () { pm.expect(pm.response.code).to.eql(200); });",
                   "const json = pm.response.json();",
+                  "pm.test('Doctor exam submissions are for exam type', function () { pm.expect(json).to.have.property('type', 'exam'); });",
                   "const first = (json.items || [])[0];",
                   "if (first) {",
                   "  pm.test('Doctor exam submission exposes score/similarity', function () {",

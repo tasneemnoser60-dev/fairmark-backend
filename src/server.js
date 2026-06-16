@@ -1244,9 +1244,11 @@ const createAssignmentHandler = asyncRoute(async (req, res) => {
       req.body.assignmentText ?? req.body.assignment ?? req.body.text ?? ''
     ).trim();
     const assignmentText = assignmentTextRaw || value.assignmentText || '';
-    const doc = {
-      ...value,
-      dueDate: new Date(value.dueDate),
+	    const doc = {
+	      ...value,
+	      type: 'assignment',
+	      kind: 'assignment',
+	      dueDate: new Date(value.dueDate),
       doctorId: doctorObjectId || req.user.id,
       doctorEmail: req.user.email,
       course,
@@ -2787,10 +2789,11 @@ app.get(
     );
 
     return res.json({
-      assignmentId: idToString(assignmentId),
-      title: assignment?.title || 'Untitled assignment',
-      type: getAssignmentType(assignment),
-      status: getAssignmentStatus(assignment),
+	      assignmentId: idToString(assignmentId),
+	      title: assignment?.title || 'Untitled assignment',
+	      type: 'assignment',
+	      kind: 'assignment',
+	      status: getAssignmentStatus(assignment),
       dueDate: assignment?.dueDate || null,
       totalMark: assignment?.totalMark ?? null,
       attemptedCount,
