@@ -1149,9 +1149,11 @@ app.get('/openapi.json', (_req, res) => {
     paths: {
       '/api/auth/register': { post: { summary: 'Register user (student/doctor/admin)' } },
       '/api/auth/login': { post: { summary: 'Login user and return JWT' } },
-      '/assignments': { post: { summary: 'Create assignment' }, get: { summary: 'List assignments' } },
-      '/submissions': { post: { summary: 'Create or update student submission' } },
-      '/grades/student': { get: { summary: 'Student grades list' } },
+	      '/assignments': { post: { summary: 'Create assignment' }, get: { summary: 'List assignments' } },
+	      '/submissions': { post: { summary: 'Create or update student submission' } },
+	      '/submissions/{submissionId}/grade': { put: { summary: 'Override submission grade (doctor/admin)' } },
+	      '/api/submissions/{submissionId}/grade': { put: { summary: 'Override submission grade (doctor/admin)' } },
+	      '/grades/student': { get: { summary: 'Student grades list' } },
       '/grades/{assignmentId}/publish': { patch: { summary: 'Publish assignment results' } },
       '/admin/users': { get: { summary: 'List users (paginated)' } },
       '/admin/users/{id}/status': { patch: { summary: 'Activate/deactivate user' } },
@@ -2067,12 +2069,17 @@ app.post(
 );
 
 app.put(
-  '/submissions/:id/grade',
+  [
+    '/submissions/:id/grade',
+    '/submissions/:submissionId/grade',
+    '/api/submissions/:id/grade',
+    '/api/submissions/:submissionId/grade',
+  ],
   auth,
   allowRoles('doctor', 'admin'),
   asyncRoute(async (req, res) => {
     const db = getDbOrFail();
-    const _id = parseObjectId(req.params.id);
+    const _id = parseObjectId(req.params.id || req.params.submissionId);
     if (!_id) return res.status(400).json({ message: 'Invalid submission id' });
     const score = Number(req.body.score);
     if (Number.isNaN(score)) return res.status(400).json({ message: 'score is required' });
