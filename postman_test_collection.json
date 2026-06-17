@@ -875,6 +875,40 @@
           ]
         },
         {
+          "name": "07a - Grade Submission API Alias (Doctor)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{doctorToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"score\": 18\n}"
+            },
+            "url": "{{baseUrl}}/api/submissions/{{submissionId}}/grade"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Grade submission API alias success', function () {",
+                  "  pm.expect(pm.response.code).to.eql(200);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
           "name": "07b - Doctor Submission Review Metrics",
           "request": {
             "method": "GET",
