@@ -2923,7 +2923,6 @@ app.get(
     const assignment = await db.collection('assignments').findOne({ _id: assignmentId });
     const access = ensureDoctorAssignmentAccess(assignment, req.user);
     if (!access.ok) return res.status(access.status).json({ message: access.message });
-    if (!isExamAssignment(assignment)) return res.status(404).json({ message: 'Exam not found' });
 
     const submissions = await db
       .collection('submissions')
