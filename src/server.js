@@ -1148,7 +1148,9 @@ app.get('/openapi.json', (_req, res) => {
     info: { title: 'Fairmark Backend API', version: '1.0.0' },
     paths: {
       '/api/auth/register': { post: { summary: 'Register user (student/doctor/admin)' } },
-      '/api/auth/login': { post: { summary: 'Login user and return JWT' } },
+	      '/api/auth/login': { post: { summary: 'Login user and return JWT' } },
+	      '/tasks': { post: { summary: 'Create assignment or exam using body.type' } },
+	      '/api/tasks': { post: { summary: 'Create assignment or exam using body.type' } },
 	      '/assignments': { post: { summary: 'Create assignment' }, get: { summary: 'List assignments' } },
 	      '/submissions': { post: { summary: 'Create or update student submission' } },
 	      '/submissions/{submissionId}/grade': { put: { summary: 'Override submission grade (doctor/admin)' } },
@@ -1338,6 +1340,16 @@ const createExamHandler = asyncRoute(async (req, res) => {
 
 app.post('/exams', auth, allowRoles('doctor', 'admin'), upload.any(), createExamHandler);
 app.post('/api/exams', auth, allowRoles('doctor', 'admin'), upload.any(), createExamHandler);
+
+const createTaskHandler = (req, res, next) => {
+  const rawType = String(req.body.type || req.body.kind || req.body.taskType || '').trim().toLowerCase();
+  if (rawType === 'exam') return createExamHandler(req, res, next);
+  if (rawType === 'assignment' || rawType === 'task') return createAssignmentHandler(req, res, next);
+  return res.status(400).json({ message: "type is required and must be 'assignment' or 'exam'" });
+};
+
+app.post('/tasks', auth, allowRoles('doctor', 'admin'), upload.any(), createTaskHandler);
+app.post('/api/tasks', auth, allowRoles('doctor', 'admin'), upload.any(), createTaskHandler);
 
 app.get(
   '/assignments',

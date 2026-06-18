@@ -239,6 +239,41 @@
           ]
         },
         {
+          "name": "04c - Create Task By Type (Doctor)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{doctorToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"exam\",\n  \"title\": \"Typed Exam {{now}}\",\n  \"description\": \"Created from one Flutter screen\",\n  \"course\": \"AI\",\n  \"totalMark\": 20,\n  \"dueDate\": \"2026-12-31T12:00:00.000Z\"\n}"
+            },
+            "url": "{{baseUrl}}/tasks"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Create task by type success', function () { pm.expect(pm.response.code).to.be.oneOf([200,201]); });",
+                  "const json = pm.response.json();",
+                  "pm.test('Task type stored from request', function () { pm.expect(json.type).to.eql('exam'); });",
+                  "if (json && (json._id || json.examId)) pm.collectionVariables.set('typedTaskId', json._id || json.examId);"
+                ]
+              }
+            }
+          ]
+        },
+        {
           "name": "04 - Create Assignment (Doctor)",
           "request": {
             "method": "POST",
